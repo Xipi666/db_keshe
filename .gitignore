@@ -20,3 +20,14 @@ out/
 .env.local
 .env.*.local
 Core/database-keshe/src/main/resources/application-local.yml
+
+# Maven local verification files
+Core/.m2-local/
+Core/.m2-home/
+Core/.maven-settings-sandbox.xml
+
+# Build outputs and dependencies
+Core/target/
+Front/node_modules/
+Front/dist/
+Front/dist-ssr/

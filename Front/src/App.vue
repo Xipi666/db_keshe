@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import HelloWorld from './components/HelloWorld.vue'
+import AuthView from './views/AuthView.vue'
 </script>
 
 <template>
-  <HelloWorld />
+  <AuthView />
 </template>

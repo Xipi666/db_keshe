@@ -26,6 +26,5 @@
 - 镜像：`gvenzl/oracle-xe:21`
 - 容器：`oracle21c`
 - JDBC：`jdbc:oracle:thin:@//localhost:1521/XEPDB1`
-- 应用用户：`psm_app`
 - 初始化入口：`Core/src/main/resources/db/oracle21c-init.sql`
 - 数据库脚本分层：`oracle21c-schema.sql` 建结构，`oracle21c-base-data.sql` 写部署基础数据，`oracle21c-mock-data.sql` 写占位演示数据
