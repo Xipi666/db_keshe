@@ -31,5 +31,5 @@ Core/target/
 Front/node_modules/
 Front/dist/
 Front/dist-ssr/
-release/*.jar
+build/*.jar
 output.txt
