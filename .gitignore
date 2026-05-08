@@ -31,5 +31,6 @@ Core/target/
 Front/node_modules/
 Front/dist/
 Front/dist-ssr/
-build/*.jar
+build/
+!build/*.bat
 output.txt

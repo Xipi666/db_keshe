@@ -7,8 +7,10 @@ for %%I in ("%ROOT_DIR%") do set "ROOT_DIR=%%~fI"
 set "FRONT_DIR=%ROOT_DIR%\Front"
 set "CORE_DIR=%ROOT_DIR%\Core"
 set "STATIC_DIR=%CORE_DIR%\src\main\resources\static"
+set "DB_SQL_DIR=%CORE_DIR%\src\main\resources\db"
 set "DIST_DIR=%FRONT_DIR%\dist"
 set "RELEASE_DIR=%ROOT_DIR%\build"
+set "RELEASE_SQL_DIR=%RELEASE_DIR%\sql"
 set "JAR_NAME=database-keshe-0.0.1-SNAPSHOT.jar"
 
 echo ======================================================
@@ -32,7 +34,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo [1/4] Building frontend...
+echo [1/5] Building frontend...
 pushd "%FRONT_DIR%" || goto :FAIL
 if not exist "node_modules" (
     echo [INFO] node_modules not found. Running npm install...
@@ -56,7 +58,7 @@ if not exist "%DIST_DIR%\index.html" (
 )
 
 echo.
-echo [2/4] Copying frontend files to Spring Boot static resources...
+echo [2/5] Copying frontend files to Spring Boot static resources...
 if exist "%STATIC_DIR%" (
     rmdir /s /q "%STATIC_DIR%"
     if errorlevel 1 goto :FAIL
@@ -69,7 +71,7 @@ xcopy "%DIST_DIR%\*" "%STATIC_DIR%\" /E /I /Y >nul
 if errorlevel 1 goto :FAIL
 
 echo.
-echo [3/4] Packaging backend jar...
+echo [3/5] Packaging backend jar...
 set "MAVEN_CMD=%CORE_DIR%\mvnw.cmd"
 
 if not exist "%MAVEN_CMD%" (
@@ -86,7 +88,7 @@ if errorlevel 1 (
 popd
 
 echo.
-echo [4/4] Copying jar to release directory...
+echo [4/5] Copying jar to release directory...
 set "SOURCE_JAR=%CORE_DIR%\target\%JAR_NAME%"
 set "TARGET_JAR=%RELEASE_DIR%\%JAR_NAME%"
 
@@ -99,8 +101,27 @@ copy /Y "%SOURCE_JAR%" "%TARGET_JAR%" >nul
 if errorlevel 1 goto :FAIL
 
 echo.
+echo [5/5] Copying database init SQL to release directory...
+if not exist "%DB_SQL_DIR%" (
+    echo [ERROR] Database init SQL directory not found: %DB_SQL_DIR%
+    goto :FAIL
+)
+
+if exist "%RELEASE_SQL_DIR%" (
+    rmdir /s /q "%RELEASE_SQL_DIR%"
+    if errorlevel 1 goto :FAIL
+)
+
+mkdir "%RELEASE_SQL_DIR%"
+if errorlevel 1 goto :FAIL
+
+xcopy "%DB_SQL_DIR%\*.sql" "%RELEASE_SQL_DIR%\" /E /I /Y >nul
+if errorlevel 1 goto :FAIL
+
+echo.
 echo [DONE] Build finished.
 echo Jar: %TARGET_JAR%
+echo SQL: %RELEASE_SQL_DIR%
 exit /b 0
 
 :FAIL
