@@ -168,8 +168,8 @@ Station -> Bay -> Device -> Tag
 ```yaml
 spring:
   datasource:
-    username: ${DB_USERNAME:psm_app}
-    password: ${DB_PASSWORD:psm_app_123}
+    username: ${DB_USERNAME:myuser}
+    password: ${DB_PASSWORD:mypassword}
 ```
 
 ## 验收优先级
@@ -195,8 +195,8 @@ spring:
 数据库：
 
 ```powershell
-docker compose up -d
-docker compose logs -f oracle21c
+wsl docker compose up -d
+wsl docker compose logs -f oracle21c
 ```
 
 ## Agent 工作规则

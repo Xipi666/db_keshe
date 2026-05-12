@@ -181,7 +181,7 @@ if "%BG_MODE%"=="true" (
 :EXIT_SCRIPT
 echo ------------------------------------------------------
 echo %GREEN%[Finished] Script execution completed.%RESET%
-:: 恢复颜色并退出
+:: TODO: close db server
 pause
 exit /b
 

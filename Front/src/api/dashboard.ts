@@ -4,9 +4,14 @@ import type {
   DeviceOptionResponse,
   HistoryDataRow,
   HistoryQuery,
+  MaintenanceTaskResponse,
   MessageQuery,
   MessageResponse,
+  RuntimeLogLevel,
+  RuntimeLogResponse,
   SimulationStatusResponse,
+  TaskQuery,
+  TaskUpdatePayload,
 } from '../types/dashboard'
 
 export function fetchDevices(session: AuthSession) {
@@ -23,6 +28,18 @@ export function fetchHistory(session: AuthSession, query: HistoryQuery) {
 
 export function fetchSimulationStatus(session: AuthSession) {
   return apiGet<SimulationStatusResponse>('/api/simulation/status', session)
+}
+
+export function fetchRuntimeLogs(session: AuthSession, level: RuntimeLogLevel = 'INFO') {
+  return apiGet<RuntimeLogResponse[]>('/api/runtime-logs', session, { level })
+}
+
+export function fetchTasks(session: AuthSession, query: TaskQuery) {
+  return apiGet<MaintenanceTaskResponse[]>('/api/tasks', session, query)
+}
+
+export function updateTask(session: AuthSession, taskId: number, payload: TaskUpdatePayload) {
+  return apiPost<MaintenanceTaskResponse>(`/api/tasks/${taskId}`, session, payload, 'PUT')
 }
 
 export function startSimulation(session: AuthSession) {

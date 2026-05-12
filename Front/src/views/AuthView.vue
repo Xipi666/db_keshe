@@ -2,7 +2,7 @@
 import { reactive, ref } from 'vue'
 import { login, register } from '../api/auth'
 import { toSession } from '../session'
-import { roleLabels, roleOptions } from '../types/auth'
+import { roleOptions } from '../types/auth'
 import type { AuthSession, LoginRequest, RegisterRequest } from '../types/auth'
 
 type AuthMode = 'login' | 'register'

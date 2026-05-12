@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import pers.luoluo.databasekeshe.security.AccessGuard;
 import pers.luoluo.databasekeshe.security.AuthenticatedUser;
+import pers.luoluo.databasekeshe.security.RoleCode;
 import pers.luoluo.databasekeshe.simulation.dto.AnomalyToggleRequest;
 import pers.luoluo.databasekeshe.simulation.dto.SimulationStatusResponse;
 import pers.luoluo.databasekeshe.simulation.service.SimulationService;
@@ -64,7 +65,7 @@ public class SimulationController {
 
     private AuthenticatedUser requireAdmin(Long userId, String roleCode) {
         AuthenticatedUser user = accessGuard.requireUser(userId, roleCode);
-        accessGuard.requireAny(user);
+        accessGuard.requireAny(user, RoleCode.ADMIN);
         return user;
     }
 }

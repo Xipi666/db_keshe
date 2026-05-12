@@ -9,6 +9,8 @@ public record SimulationStatusResponse(
         LocalDateTime lastWriteAt,
         long writeCount,
         long alarmCount,
-        long taskCount
+        long taskCount,
+        int normalIntervalSeconds,
+        int burstIntervalSeconds
 ) {
 }

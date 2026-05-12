@@ -76,14 +76,14 @@ public class QueryService {
     public List<HistoryDataRow> queryHistory(AuthenticatedUser user, HistoryQueryRequest request) {
         accessGuard.requireAny(user, RoleCode.OPERATOR, RoleCode.ENGINEER, RoleCode.MANAGER);
 
-        LocalDateTime endTime = request.endTime() == null ? LocalDateTime.now() : request.endTime();
-        LocalDateTime startTime = request.startTime() == null ? endTime.minusHours(1) : request.startTime();
-        validateTimeRange(startTime, endTime);
-
         Integer freqFlag = request.freqFlag();
         if (freqFlag != null && freqFlag != 0 && freqFlag != 1) {
             throw new AuthException(HttpStatus.BAD_REQUEST, "采样频率标记不合法");
         }
+
+        LocalDateTime endTime = request.endTime() == null ? LocalDateTime.now() : request.endTime();
+        LocalDateTime startTime = request.startTime() == null ? endTime.minusHours(1) : request.startTime();
+        validateTimeRange(startTime, endTime);
 
         return queryMapper.findHistory(
                 request.deviceId(),

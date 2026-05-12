@@ -78,6 +78,41 @@ export interface HistoryQuery {
   freqFlag?: number
 }
 
+export interface MaintenanceTaskResponse {
+  taskId: number
+  alarmId: number
+  deviceId: number
+  deviceName: string
+  tagId?: number
+  tagName?: string
+  tagCode?: string
+  unit?: string
+  alarmType: string
+  alarmLevel: string
+  alarmValue?: number
+  alarmTime: string
+  status: number
+  assignee?: string
+  feedback?: string
+  createdAt: string
+  updatedAt?: string
+  finishedAt?: string
+}
+
+export interface TaskQuery {
+  status?: number
+  deviceId?: number
+  startTime?: string
+  endTime?: string
+  keyword?: string
+}
+
+export interface TaskUpdatePayload {
+  status: number
+  assignee?: string
+  feedback?: string
+}
+
 export interface SimulationStatusResponse {
   running: boolean
   anomalyEnabled: boolean
@@ -86,6 +121,20 @@ export interface SimulationStatusResponse {
   writeCount: number
   alarmCount: number
   taskCount: number
+  normalIntervalSeconds: number
+  burstIntervalSeconds: number
+}
+
+export type RuntimeLogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR'
+export type RuntimeLogSource = 'FRONTEND' | 'BACKEND'
+
+export interface RuntimeLogResponse {
+  id: number
+  source: RuntimeLogSource
+  level: RuntimeLogLevel
+  message: string
+  context?: string
+  createdAt: string
 }
 
 export const categoryLabels: Record<MessageCategory, string> = {
@@ -93,6 +142,15 @@ export const categoryLabels: Record<MessageCategory, string> = {
   ALARM: '告警记录',
   TASK: '维保工单',
 }
+
+export const runtimeLogLevelLabels: Record<RuntimeLogLevel, string> = {
+  DEBUG: '调试',
+  INFO: '信息',
+  WARN: '警告',
+  ERROR: '错误',
+}
+
+export const runtimeLogLevelOptions: RuntimeLogLevel[] = ['INFO', 'WARN', 'ERROR', 'DEBUG']
 
 export function allowedCategories(roleCode: RoleCode): MessageCategory[] {
   if (roleCode === 'OPERATOR') {

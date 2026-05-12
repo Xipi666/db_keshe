@@ -1,4 +1,5 @@
 import type { AuthSession } from '../types/auth'
+import { appendFrontendLog } from '../utils/runtimeLog'
 
 export async function apiGet<TResponse>(
   url: string,
@@ -18,9 +19,12 @@ export async function apiGet<TResponse>(
   })
 
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response))
+    const message = await readErrorMessage(response)
+    appendFrontendLog('ERROR', `GET ${url} 请求失败`, `${response.status} ${message}`)
+    throw new Error(message)
   }
 
+  appendFrontendLog('INFO', `GET ${url} 请求成功`)
   return response.json() as Promise<TResponse>
 }
 
@@ -40,9 +44,12 @@ export async function apiPost<TResponse>(
   })
 
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response))
+    const message = await readErrorMessage(response)
+    appendFrontendLog('ERROR', `${method} ${url} 请求失败`, `${response.status} ${message}`)
+    throw new Error(message)
   }
 
+  appendFrontendLog('INFO', `${method} ${url} 请求成功`)
   return response.json() as Promise<TResponse>
 }
 
