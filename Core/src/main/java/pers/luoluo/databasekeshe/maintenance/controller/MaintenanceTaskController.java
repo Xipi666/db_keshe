@@ -33,7 +33,8 @@ public class MaintenanceTaskController {
             @RequestHeader("X-User-Id") Long userId,
             @RequestHeader("X-Role-Code") String roleCode,
             @RequestParam(required = false) Integer status,
-            @RequestParam(required = false) Long deviceId,
+            @RequestParam(required = false) Long transformerId,
+            @RequestParam(required = false) Long circuitId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
             @RequestParam(required = false) String keyword
@@ -41,7 +42,8 @@ public class MaintenanceTaskController {
         AuthenticatedUser user = accessGuard.requireUser(userId, roleCode);
         return maintenanceTaskService.queryTasks(user, new TaskQueryRequest(
                 status,
-                deviceId,
+                transformerId,
+                circuitId,
                 startTime,
                 endTime,
                 keyword

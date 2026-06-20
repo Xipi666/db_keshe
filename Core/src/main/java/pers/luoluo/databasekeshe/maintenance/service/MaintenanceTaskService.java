@@ -37,7 +37,8 @@ public class MaintenanceTaskService {
 
         return maintenanceTaskMapper.findTasks(
                 request.status(),
-                request.deviceId(),
+                request.transformerId(),
+                request.circuitId(),
                 startTime,
                 endTime,
                 normalizedKeyword(request.keyword()),
@@ -49,7 +50,7 @@ public class MaintenanceTaskService {
     public MaintenanceTaskResponse updateTask(AuthenticatedUser user, Long taskId, TaskUpdateRequest request) {
         accessGuard.requireAny(user, RoleCode.ENGINEER);
         if (taskId == null || maintenanceTaskMapper.existsById(taskId) == 0) {
-            throw new AuthException(HttpStatus.NOT_FOUND, "工单不存在");
+            throw new AuthException(HttpStatus.NOT_FOUND, "Task does not exist.");
         }
 
         Integer status = request.status();
@@ -60,20 +61,20 @@ public class MaintenanceTaskService {
 
         MaintenanceTaskResponse updatedTask = maintenanceTaskMapper.findById(taskId);
         if (updatedTask == null) {
-            throw new AuthException(HttpStatus.NOT_FOUND, "工单不存在");
+            throw new AuthException(HttpStatus.NOT_FOUND, "Task does not exist.");
         }
         return updatedTask;
     }
 
     private void validateStatus(Integer status) {
         if (status != null && status != 0 && status != 1 && status != 2) {
-            throw new AuthException(HttpStatus.BAD_REQUEST, "工单状态不合法");
+            throw new AuthException(HttpStatus.BAD_REQUEST, "Invalid task status.");
         }
     }
 
     private void validateTimeRange(LocalDateTime startTime, LocalDateTime endTime) {
         if (startTime.isAfter(endTime)) {
-            throw new AuthException(HttpStatus.BAD_REQUEST, "开始时间不能晚于结束时间");
+            throw new AuthException(HttpStatus.BAD_REQUEST, "Start time cannot be after end time.");
         }
     }
 

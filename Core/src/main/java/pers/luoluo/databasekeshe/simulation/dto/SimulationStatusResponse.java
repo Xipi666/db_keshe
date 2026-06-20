@@ -10,7 +10,6 @@ public record SimulationStatusResponse(
         long writeCount,
         long alarmCount,
         long taskCount,
-        int normalIntervalSeconds,
-        int burstIntervalSeconds
+        int sampleIntervalSeconds
 ) {
 }

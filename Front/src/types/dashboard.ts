@@ -2,42 +2,59 @@ import type { RoleCode } from './auth'
 
 export type MessageCategory = 'SAMPLE' | 'ALARM' | 'TASK'
 
-export interface TagOptionResponse {
+export interface MeasurePointOptionResponse {
   id: number
-  tagCode: string
-  tagName: string
+  pointCode: string
+  pointName: string
+  pointGroup: string
+  measureType: string
+  phaseCode: string
   unit?: string
-  warnLimit?: number
+  minLimit?: number
+  maxLimit?: number
   rateLimit?: number
 }
 
-export interface DeviceOptionResponse {
-  stationId: number
-  stationName: string
-  bayId: number
-  bayName: string
-  deviceId: number
-  deviceName: string
-  deviceType: string
+export interface CircuitOptionResponse {
+  circuitId: number
+  circuitCode: string
+  circuitName: string
+  direction: 'INCOMING' | 'OUTGOING'
+  ratedVoltageKv?: number
+  ratedCurrentA?: number
   status: number
-  currentLimit?: number
-  tempLimit?: number
-  tempRateLimit?: number
-  tags: TagOptionResponse[]
+  points: MeasurePointOptionResponse[]
+}
+
+export interface TransformerOptionResponse {
+  transformerId: number
+  transformerCode: string
+  transformerName: string
+  transformerType: string
+  ratedCapacityKva?: number
+  ratedVoltageRatio?: string
+  commissionDate?: string
+  manufacturer?: string
+  oilLevel?: number
+  location?: string
+  status: number
+  circuits: CircuitOptionResponse[]
+  points: MeasurePointOptionResponse[]
 }
 
 export interface MessageResponse {
   category: MessageCategory
   id: number
-  deviceId: number
-  deviceName: string
-  tagId?: number
-  tagName?: string
-  tagCode?: string
+  transformerId: number
+  transformerName: string
+  circuitId?: number
+  circuitName?: string
+  pointId?: number
+  pointName?: string
+  pointCode?: string
   eventTime: string
   value?: number
   unit?: string
-  freqFlag?: number
   qualityFlag?: number
   alarmType?: string
   alarmLevel?: string
@@ -48,8 +65,9 @@ export interface MessageResponse {
 
 export interface MessageQuery {
   category?: MessageCategory
-  deviceId?: number
-  tagId?: number
+  transformerId?: number
+  circuitId?: number
+  pointId?: number
   startTime?: string
   endTime?: string
   keyword?: string
@@ -57,35 +75,38 @@ export interface MessageQuery {
 
 export interface HistoryDataRow {
   id: number
-  deviceId: number
-  deviceName: string
-  tagId?: number
-  tagName?: string
-  tagCode?: string
+  transformerId: number
+  transformerName: string
+  circuitId?: number
+  circuitName?: string
+  pointId?: number
+  pointName?: string
+  pointCode?: string
   unit?: string
   sampleTime: string
   value: number
-  freqFlag: number
   qualityFlag: number
   createdAt: string
 }
 
 export interface HistoryQuery {
-  deviceId?: number
-  tagId?: number
+  transformerId?: number
+  circuitId?: number
+  pointId?: number
   startTime?: string
   endTime?: string
-  freqFlag?: number
 }
 
 export interface MaintenanceTaskResponse {
   taskId: number
   alarmId: number
-  deviceId: number
-  deviceName: string
-  tagId?: number
-  tagName?: string
-  tagCode?: string
+  transformerId: number
+  transformerName: string
+  circuitId?: number
+  circuitName?: string
+  pointId?: number
+  pointName?: string
+  pointCode?: string
   unit?: string
   alarmType: string
   alarmLevel: string
@@ -101,7 +122,8 @@ export interface MaintenanceTaskResponse {
 
 export interface TaskQuery {
   status?: number
-  deviceId?: number
+  transformerId?: number
+  circuitId?: number
   startTime?: string
   endTime?: string
   keyword?: string
@@ -121,8 +143,7 @@ export interface SimulationStatusResponse {
   writeCount: number
   alarmCount: number
   taskCount: number
-  normalIntervalSeconds: number
-  burstIntervalSeconds: number
+  sampleIntervalSeconds: number
 }
 
 export type RuntimeLogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR'

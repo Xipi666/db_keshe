@@ -4,8 +4,9 @@ import java.time.LocalDateTime;
 
 public record MessageQueryRequest(
         MessageCategory category,
-        Long deviceId,
-        Long tagId,
+        Long transformerId,
+        Long circuitId,
+        Long pointId,
         LocalDateTime startTime,
         LocalDateTime endTime,
         String keyword

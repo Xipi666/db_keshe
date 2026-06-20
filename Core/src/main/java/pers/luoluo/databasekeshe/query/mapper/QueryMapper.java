@@ -18,15 +18,16 @@ public interface QueryMapper {
                 SELECT
                     'SAMPLE' AS category,
                     r.ID AS id,
-                    r.DEVICE_ID AS deviceId,
-                    d.NAME AS deviceName,
-                    r.TAG_ID AS tagId,
-                    t.TAG_NAME AS tagName,
-                    t.TAG_CODE AS tagCode,
+                    r.TRANSFORMER_ID AS transformerId,
+                    bt.NAME AS transformerName,
+                    r.CIRCUIT_ID AS circuitId,
+                    pc.NAME AS circuitName,
+                    r.POINT_ID AS pointId,
+                    mp.POINT_NAME AS pointName,
+                    mp.POINT_CODE AS pointCode,
                     r.SAMPLE_TIME AS eventTime,
                     r.VAL AS value,
-                    t.UNIT AS unit,
-                    r.FREQ_FLAG AS freqFlag,
+                    mp.UNIT AS unit,
                     r.QUALITY_FLAG AS qualityFlag,
                     NULL AS alarmType,
                     NULL AS alarmLevel,
@@ -34,20 +35,26 @@ public interface QueryMapper {
                     NULL AS assignee,
                     NULL AS feedback
                 FROM TS_RAW_DATA r
-                JOIN DEVICE_BASE d ON d.ID = r.DEVICE_ID
-                LEFT JOIN TAG_BASE t ON t.ID = r.TAG_ID
+                JOIN BOX_TRANSFORMER bt ON bt.ID = r.TRANSFORMER_ID
+                LEFT JOIN POWER_CIRCUIT pc ON pc.ID = r.CIRCUIT_ID
+                JOIN MEASURE_POINT mp ON mp.ID = r.POINT_ID
                 WHERE r.SAMPLE_TIME BETWEEN #{startTime} AND #{endTime}
-                <if test="deviceId != null">
-                    AND r.DEVICE_ID = #{deviceId}
+                <if test="transformerId != null">
+                    AND r.TRANSFORMER_ID = #{transformerId}
                 </if>
-                <if test="tagId != null">
-                    AND r.TAG_ID = #{tagId}
+                <if test="circuitId != null">
+                    AND r.CIRCUIT_ID = #{circuitId}
+                </if>
+                <if test="pointId != null">
+                    AND r.POINT_ID = #{pointId}
                 </if>
                 <if test="keyword != null and keyword != ''">
                     AND (
-                        LOWER(d.NAME) LIKE '%' || LOWER(#{keyword}) || '%'
-                        OR LOWER(t.TAG_NAME) LIKE '%' || LOWER(#{keyword}) || '%'
-                        OR LOWER(t.TAG_CODE) LIKE '%' || LOWER(#{keyword}) || '%'
+                        LOWER(bt.NAME) LIKE '%' || LOWER(#{keyword}) || '%'
+                        OR LOWER(pc.NAME) LIKE '%' || LOWER(#{keyword}) || '%'
+                        OR LOWER(mp.POINT_NAME) LIKE '%' || LOWER(#{keyword}) || '%'
+                        OR LOWER(mp.POINT_CODE) LIKE '%' || LOWER(#{keyword}) || '%'
+                        OR LOWER(mp.MEASURE_TYPE) LIKE '%' || LOWER(#{keyword}) || '%'
                     )
                 </if>
                 ORDER BY r.SAMPLE_TIME DESC, r.ID DESC
@@ -56,8 +63,9 @@ public interface QueryMapper {
             </script>
             """)
     List<MessageResponse> findSampleMessages(
-            @Param("deviceId") Long deviceId,
-            @Param("tagId") Long tagId,
+            @Param("transformerId") Long transformerId,
+            @Param("circuitId") Long circuitId,
+            @Param("pointId") Long pointId,
             @Param("startTime") LocalDateTime startTime,
             @Param("endTime") LocalDateTime endTime,
             @Param("keyword") String keyword,
@@ -71,15 +79,16 @@ public interface QueryMapper {
                 SELECT
                     'ALARM' AS category,
                     a.ID AS id,
-                    a.DEVICE_ID AS deviceId,
-                    d.NAME AS deviceName,
-                    a.TAG_ID AS tagId,
-                    t.TAG_NAME AS tagName,
-                    t.TAG_CODE AS tagCode,
+                    a.TRANSFORMER_ID AS transformerId,
+                    bt.NAME AS transformerName,
+                    a.CIRCUIT_ID AS circuitId,
+                    pc.NAME AS circuitName,
+                    a.POINT_ID AS pointId,
+                    mp.POINT_NAME AS pointName,
+                    mp.POINT_CODE AS pointCode,
                     a.START_TIME AS eventTime,
                     a.START_VAL AS value,
-                    t.UNIT AS unit,
-                    NULL AS freqFlag,
+                    mp.UNIT AS unit,
                     NULL AS qualityFlag,
                     a.ALARM_TYPE AS alarmType,
                     a.ALARM_LEVEL AS alarmLevel,
@@ -87,20 +96,25 @@ public interface QueryMapper {
                     NULL AS assignee,
                     NULL AS feedback
                 FROM ALARM_LOG a
-                JOIN DEVICE_BASE d ON d.ID = a.DEVICE_ID
-                LEFT JOIN TAG_BASE t ON t.ID = a.TAG_ID
+                JOIN BOX_TRANSFORMER bt ON bt.ID = a.TRANSFORMER_ID
+                LEFT JOIN POWER_CIRCUIT pc ON pc.ID = a.CIRCUIT_ID
+                LEFT JOIN MEASURE_POINT mp ON mp.ID = a.POINT_ID
                 WHERE a.START_TIME BETWEEN #{startTime} AND #{endTime}
-                <if test="deviceId != null">
-                    AND a.DEVICE_ID = #{deviceId}
+                <if test="transformerId != null">
+                    AND a.TRANSFORMER_ID = #{transformerId}
                 </if>
-                <if test="tagId != null">
-                    AND a.TAG_ID = #{tagId}
+                <if test="circuitId != null">
+                    AND a.CIRCUIT_ID = #{circuitId}
+                </if>
+                <if test="pointId != null">
+                    AND a.POINT_ID = #{pointId}
                 </if>
                 <if test="keyword != null and keyword != ''">
                     AND (
-                        LOWER(d.NAME) LIKE '%' || LOWER(#{keyword}) || '%'
-                        OR LOWER(t.TAG_NAME) LIKE '%' || LOWER(#{keyword}) || '%'
-                        OR LOWER(t.TAG_CODE) LIKE '%' || LOWER(#{keyword}) || '%'
+                        LOWER(bt.NAME) LIKE '%' || LOWER(#{keyword}) || '%'
+                        OR LOWER(pc.NAME) LIKE '%' || LOWER(#{keyword}) || '%'
+                        OR LOWER(mp.POINT_NAME) LIKE '%' || LOWER(#{keyword}) || '%'
+                        OR LOWER(mp.POINT_CODE) LIKE '%' || LOWER(#{keyword}) || '%'
                         OR LOWER(a.ALARM_TYPE) LIKE '%' || LOWER(#{keyword}) || '%'
                         OR LOWER(a.ALARM_LEVEL) LIKE '%' || LOWER(#{keyword}) || '%'
                     )
@@ -111,8 +125,9 @@ public interface QueryMapper {
             </script>
             """)
     List<MessageResponse> findAlarmMessages(
-            @Param("deviceId") Long deviceId,
-            @Param("tagId") Long tagId,
+            @Param("transformerId") Long transformerId,
+            @Param("circuitId") Long circuitId,
+            @Param("pointId") Long pointId,
             @Param("startTime") LocalDateTime startTime,
             @Param("endTime") LocalDateTime endTime,
             @Param("keyword") String keyword,
@@ -126,15 +141,16 @@ public interface QueryMapper {
                 SELECT
                     'TASK' AS category,
                     mt.TASK_ID AS id,
-                    a.DEVICE_ID AS deviceId,
-                    d.NAME AS deviceName,
-                    a.TAG_ID AS tagId,
-                    tb.TAG_NAME AS tagName,
-                    tb.TAG_CODE AS tagCode,
+                    a.TRANSFORMER_ID AS transformerId,
+                    bt.NAME AS transformerName,
+                    a.CIRCUIT_ID AS circuitId,
+                    pc.NAME AS circuitName,
+                    a.POINT_ID AS pointId,
+                    mp.POINT_NAME AS pointName,
+                    mp.POINT_CODE AS pointCode,
                     mt.CREATED_AT AS eventTime,
                     a.START_VAL AS value,
-                    tb.UNIT AS unit,
-                    NULL AS freqFlag,
+                    mp.UNIT AS unit,
                     NULL AS qualityFlag,
                     a.ALARM_TYPE AS alarmType,
                     a.ALARM_LEVEL AS alarmLevel,
@@ -143,20 +159,25 @@ public interface QueryMapper {
                     mt.FEEDBACK AS feedback
                 FROM MAINT_TASK mt
                 JOIN ALARM_LOG a ON a.ID = mt.ALARM_ID
-                JOIN DEVICE_BASE d ON d.ID = a.DEVICE_ID
-                LEFT JOIN TAG_BASE tb ON tb.ID = a.TAG_ID
+                JOIN BOX_TRANSFORMER bt ON bt.ID = a.TRANSFORMER_ID
+                LEFT JOIN POWER_CIRCUIT pc ON pc.ID = a.CIRCUIT_ID
+                LEFT JOIN MEASURE_POINT mp ON mp.ID = a.POINT_ID
                 WHERE mt.CREATED_AT BETWEEN #{startTime} AND #{endTime}
-                <if test="deviceId != null">
-                    AND a.DEVICE_ID = #{deviceId}
+                <if test="transformerId != null">
+                    AND a.TRANSFORMER_ID = #{transformerId}
                 </if>
-                <if test="tagId != null">
-                    AND a.TAG_ID = #{tagId}
+                <if test="circuitId != null">
+                    AND a.CIRCUIT_ID = #{circuitId}
+                </if>
+                <if test="pointId != null">
+                    AND a.POINT_ID = #{pointId}
                 </if>
                 <if test="keyword != null and keyword != ''">
                     AND (
-                        LOWER(d.NAME) LIKE '%' || LOWER(#{keyword}) || '%'
-                        OR LOWER(tb.TAG_NAME) LIKE '%' || LOWER(#{keyword}) || '%'
-                        OR LOWER(tb.TAG_CODE) LIKE '%' || LOWER(#{keyword}) || '%'
+                        LOWER(bt.NAME) LIKE '%' || LOWER(#{keyword}) || '%'
+                        OR LOWER(pc.NAME) LIKE '%' || LOWER(#{keyword}) || '%'
+                        OR LOWER(mp.POINT_NAME) LIKE '%' || LOWER(#{keyword}) || '%'
+                        OR LOWER(mp.POINT_CODE) LIKE '%' || LOWER(#{keyword}) || '%'
                         OR LOWER(mt.ASSIGNEE) LIKE '%' || LOWER(#{keyword}) || '%'
                         OR LOWER(mt.FEEDBACK) LIKE '%' || LOWER(#{keyword}) || '%'
                     )
@@ -167,8 +188,9 @@ public interface QueryMapper {
             </script>
             """)
     List<MessageResponse> findTaskMessages(
-            @Param("deviceId") Long deviceId,
-            @Param("tagId") Long tagId,
+            @Param("transformerId") Long transformerId,
+            @Param("circuitId") Long circuitId,
+            @Param("pointId") Long pointId,
             @Param("startTime") LocalDateTime startTime,
             @Param("endTime") LocalDateTime endTime,
             @Param("keyword") String keyword,
@@ -181,29 +203,31 @@ public interface QueryMapper {
             FROM (
                 SELECT
                     r.ID AS id,
-                    r.DEVICE_ID AS deviceId,
-                    d.NAME AS deviceName,
-                    r.TAG_ID AS tagId,
-                    t.TAG_NAME AS tagName,
-                    t.TAG_CODE AS tagCode,
-                    t.UNIT AS unit,
+                    r.TRANSFORMER_ID AS transformerId,
+                    bt.NAME AS transformerName,
+                    r.CIRCUIT_ID AS circuitId,
+                    pc.NAME AS circuitName,
+                    r.POINT_ID AS pointId,
+                    mp.POINT_NAME AS pointName,
+                    mp.POINT_CODE AS pointCode,
+                    mp.UNIT AS unit,
                     r.SAMPLE_TIME AS sampleTime,
                     r.VAL AS value,
-                    r.FREQ_FLAG AS freqFlag,
                     r.QUALITY_FLAG AS qualityFlag,
                     r.CREATED_AT AS createdAt
                 FROM TS_RAW_DATA r
-                JOIN DEVICE_BASE d ON d.ID = r.DEVICE_ID
-                LEFT JOIN TAG_BASE t ON t.ID = r.TAG_ID
+                JOIN BOX_TRANSFORMER bt ON bt.ID = r.TRANSFORMER_ID
+                LEFT JOIN POWER_CIRCUIT pc ON pc.ID = r.CIRCUIT_ID
+                JOIN MEASURE_POINT mp ON mp.ID = r.POINT_ID
                 WHERE r.SAMPLE_TIME BETWEEN #{startTime} AND #{endTime}
-                <if test="deviceId != null">
-                    AND r.DEVICE_ID = #{deviceId}
+                <if test="transformerId != null">
+                    AND r.TRANSFORMER_ID = #{transformerId}
                 </if>
-                <if test="tagId != null">
-                    AND r.TAG_ID = #{tagId}
+                <if test="circuitId != null">
+                    AND r.CIRCUIT_ID = #{circuitId}
                 </if>
-                <if test="freqFlag != null">
-                    AND r.FREQ_FLAG = #{freqFlag}
+                <if test="pointId != null">
+                    AND r.POINT_ID = #{pointId}
                 </if>
                 ORDER BY r.SAMPLE_TIME DESC, r.ID DESC
             )
@@ -211,9 +235,9 @@ public interface QueryMapper {
             </script>
             """)
     List<HistoryDataRow> findHistory(
-            @Param("deviceId") Long deviceId,
-            @Param("tagId") Long tagId,
-            @Param("freqFlag") Integer freqFlag,
+            @Param("transformerId") Long transformerId,
+            @Param("circuitId") Long circuitId,
+            @Param("pointId") Long pointId,
             @Param("startTime") LocalDateTime startTime,
             @Param("endTime") LocalDateTime endTime,
             @Param("limit") int limit

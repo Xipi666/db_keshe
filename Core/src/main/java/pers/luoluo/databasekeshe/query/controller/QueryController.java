@@ -32,8 +32,9 @@ public class QueryController {
             @RequestHeader("X-User-Id") Long userId,
             @RequestHeader("X-Role-Code") String roleCode,
             @RequestParam(required = false) MessageCategory category,
-            @RequestParam(required = false) Long deviceId,
-            @RequestParam(required = false) Long tagId,
+            @RequestParam(required = false) Long transformerId,
+            @RequestParam(required = false) Long circuitId,
+            @RequestParam(required = false) Long pointId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
             @RequestParam(required = false) String keyword
@@ -41,8 +42,9 @@ public class QueryController {
         AuthenticatedUser user = accessGuard.requireUser(userId, roleCode);
         return queryService.queryMessages(user, new MessageQueryRequest(
                 category,
-                deviceId,
-                tagId,
+                transformerId,
+                circuitId,
+                pointId,
                 startTime,
                 endTime,
                 keyword
@@ -53,19 +55,19 @@ public class QueryController {
     public List<HistoryDataRow> history(
             @RequestHeader("X-User-Id") Long userId,
             @RequestHeader("X-Role-Code") String roleCode,
-            @RequestParam(required = false) Long deviceId,
-            @RequestParam(required = false) Long tagId,
+            @RequestParam(required = false) Long transformerId,
+            @RequestParam(required = false) Long circuitId,
+            @RequestParam(required = false) Long pointId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
-            @RequestParam(required = false) Integer freqFlag
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime
     ) {
         AuthenticatedUser user = accessGuard.requireUser(userId, roleCode);
         return queryService.queryHistory(user, new HistoryQueryRequest(
-                deviceId,
-                tagId,
+                transformerId,
+                circuitId,
+                pointId,
                 startTime,
-                endTime,
-                freqFlag
+                endTime
         ));
     }
 }

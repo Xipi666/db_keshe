@@ -10,19 +10,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import pers.luoluo.databasekeshe.simulation.dto.SimulationPointProfile;
 import pers.luoluo.databasekeshe.simulation.dto.SimulationStatusResponse;
-import pers.luoluo.databasekeshe.simulation.dto.SimulationTagProfile;
 import pers.luoluo.databasekeshe.simulation.mapper.SimulationMapper;
 
 @Service
 public class SimulationService {
 
-    private static final int NORMAL_INTERVAL_SECONDS = 60;
-    private static final int BURST_INTERVAL_SECONDS = 1;
-    private static final BigDecimal DEFAULT_BASE_VALUE = new BigDecimal("50.0000");
-    private static final BigDecimal NORMAL_RATIO = new BigDecimal("0.72");
-    private static final BigDecimal ANOMALY_RATIO = new BigDecimal("1.12");
+    private static final int SAMPLE_INTERVAL_SECONDS = 1;
 
     private final SimulationMapper simulationMapper;
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -34,8 +29,6 @@ public class SimulationService {
 
     private volatile LocalDateTime startedAt;
     private volatile LocalDateTime lastWriteAt;
-    private volatile LocalDateTime lastNormalWriteAt;
-    private volatile LocalDateTime lastBurstWriteAt;
 
     public SimulationService(SimulationMapper simulationMapper) {
         this.simulationMapper = simulationMapper;
@@ -45,8 +38,6 @@ public class SimulationService {
         if (running.compareAndSet(false, true)) {
             startedAt = LocalDateTime.now();
             lastWriteAt = null;
-            lastNormalWriteAt = null;
-            lastBurstWriteAt = null;
             writeCount.set(0);
             alarmCount.set(0);
             taskCount.set(0);
@@ -75,125 +66,122 @@ public class SimulationService {
                 writeCount.get(),
                 alarmCount.get(),
                 taskCount.get(),
-                NORMAL_INTERVAL_SECONDS,
-                BURST_INTERVAL_SECONDS
+                SAMPLE_INTERVAL_SECONDS
         );
     }
 
     @Scheduled(fixedDelay = 1000)
-    @Transactional
     public void writeTick() {
         if (!running.get()) {
             return;
         }
 
         LocalDateTime sampleTime = LocalDateTime.now();
-        boolean abnormal = anomalyEnabled.get();
-        if (!shouldWrite(sampleTime, abnormal)) {
+        if (!shouldWrite(sampleTime)) {
             return;
         }
 
-        List<SimulationTagProfile> profiles = simulationMapper.findTagProfiles();
+        List<SimulationPointProfile> profiles = simulationMapper.findPointProfiles();
         if (profiles.isEmpty()) {
             return;
         }
 
-        for (SimulationTagProfile profile : profiles) {
+        boolean abnormal = anomalyEnabled.get();
+        for (SimulationPointProfile profile : profiles) {
             BigDecimal value = nextValue(profile, abnormal);
             boolean outOfRange = !inReasonableRange(profile, value);
-            String alarmKey = profile.deviceId() + ":" + profile.tagId();
+            String alarmKey = profile.transformerId() + ":" + profile.pointId();
             simulationMapper.insertRawData(
-                    profile.deviceId(),
-                    profile.tagId(),
+                    profile.transformerId(),
+                    profile.circuitId(),
+                    profile.pointId(),
                     sampleTime,
                     value,
-                    abnormal ? 1 : 0,
                     outOfRange ? 1 : 0
             );
             writeCount.incrementAndGet();
 
             if (outOfRange && activeRangeAlarms.add(alarmKey)) {
-                createAlarmAndTask(profile, sampleTime, value, "RANGE_LIMIT");
+                createAlarmAndTask(profile, sampleTime, value, alarmType(profile, value));
             } else if (!outOfRange) {
                 activeRangeAlarms.remove(alarmKey);
             }
         }
 
-        if (abnormal) {
-            lastBurstWriteAt = sampleTime;
-        } else {
-            lastNormalWriteAt = sampleTime;
-        }
         lastWriteAt = sampleTime;
     }
 
-    private boolean shouldWrite(LocalDateTime sampleTime, boolean abnormal) {
-        LocalDateTime previousWriteAt = abnormal ? lastBurstWriteAt : lastNormalWriteAt;
-        int interval = abnormal ? BURST_INTERVAL_SECONDS : NORMAL_INTERVAL_SECONDS;
-        return previousWriteAt == null || !sampleTime.isBefore(previousWriteAt.plusSeconds(interval));
+    private boolean shouldWrite(LocalDateTime sampleTime) {
+        return lastWriteAt == null || !sampleTime.isBefore(lastWriteAt.plusSeconds(SAMPLE_INTERVAL_SECONDS));
     }
 
-    private BigDecimal nextValue(SimulationTagProfile profile, boolean abnormal) {
-        BigDecimal base = profile.warnLimit() == null ? DEFAULT_BASE_VALUE : profile.warnLimit();
-        BigDecimal ratio = valueRatio(profile, abnormal);
-        long phase = writeCount.get() % 9;
-        BigDecimal drift = new BigDecimal(phase).subtract(new BigDecimal("4")).multiply(new BigDecimal("0.1200"));
-        return base.multiply(ratio).add(drift).setScale(4, RoundingMode.HALF_UP);
+    private BigDecimal nextValue(SimulationPointProfile profile, boolean abnormal) {
+        BigDecimal base = baseValue(profile, abnormal);
+        String type = normalizedType(profile);
+        if (type.endsWith("_STATUS") || "POWER_FACTOR".equals(type)) {
+            return base.setScale(4, RoundingMode.HALF_UP);
+        }
+        long phase = writeCount.get() % 7;
+        BigDecimal drift = new BigDecimal(phase).subtract(new BigDecimal("3")).multiply(new BigDecimal("0.0500"));
+        return base.add(drift).setScale(4, RoundingMode.HALF_UP);
     }
 
-    private BigDecimal valueRatio(SimulationTagProfile profile, boolean abnormal) {
-        String tagCode = normalizedTagCode(profile);
-        if (tagCode.contains("VOLTAGE")) {
-            return abnormal ? new BigDecimal("1.08") : new BigDecimal("0.96");
-        }
-        return abnormal ? ANOMALY_RATIO : NORMAL_RATIO;
+    private BigDecimal baseValue(SimulationPointProfile profile, boolean abnormal) {
+        String type = normalizedType(profile);
+        return switch (type) {
+            case "VOLTAGE" -> voltageValue(profile, abnormal);
+            case "CURRENT" -> currentValue(profile, abnormal);
+            case "POWER_FACTOR" -> abnormal ? new BigDecimal("0.7800") : new BigDecimal("0.9300");
+            case "ENERGY" -> new BigDecimal("12000.0000").add(BigDecimal.valueOf(writeCount.get()).multiply(new BigDecimal("0.0200")));
+            case "FREQUENCY" -> abnormal ? new BigDecimal("49.2000") : new BigDecimal("50.0200");
+            case "OIL_TEMP" -> abnormal ? new BigDecimal("91.0000") : new BigDecimal("63.0000");
+            case "CABINET_TEMP" -> abnormal ? new BigDecimal("50.0000") : new BigDecimal("32.0000");
+            case "CABINET_HUMIDITY" -> abnormal ? new BigDecimal("88.0000") : new BigDecimal("55.0000");
+            case "SWITCH_STATUS" -> BigDecimal.ONE;
+            case "FUSE_STATUS", "SMOKE_STATUS" -> abnormal ? BigDecimal.ONE : BigDecimal.ZERO;
+            case "DOOR_STATUS" -> abnormal ? BigDecimal.ONE : BigDecimal.ZERO;
+            default -> BigDecimal.ZERO;
+        };
     }
 
-    private boolean inReasonableRange(SimulationTagProfile profile, BigDecimal value) {
-        BigDecimal min = reasonableMin(profile);
-        BigDecimal max = reasonableMax(profile);
-        return value.compareTo(min) >= 0 && value.compareTo(max) <= 0;
+    private BigDecimal voltageValue(SimulationPointProfile profile, boolean abnormal) {
+        String unit = profile.unit() == null ? "" : profile.unit().toUpperCase();
+        if ("V".equals(unit)) {
+            return abnormal ? new BigDecimal("445.0000") : new BigDecimal("400.0000");
+        }
+        return abnormal ? new BigDecimal("11.2000") : new BigDecimal("10.1000");
     }
 
-    private BigDecimal reasonableMin(SimulationTagProfile profile) {
-        String tagCode = normalizedTagCode(profile);
-        if (tagCode.contains("VOLTAGE")) {
-            return new BigDecimal("9.5000");
-        }
-        if (tagCode.contains("TEMP")) {
-            return new BigDecimal("-20.0000");
-        }
-        return BigDecimal.ZERO;
+    private BigDecimal currentValue(SimulationPointProfile profile, boolean abnormal) {
+        BigDecimal max = profile.maxLimit() == null ? new BigDecimal("100.0000") : profile.maxLimit();
+        return max.multiply(abnormal ? new BigDecimal("1.0800") : new BigDecimal("0.6200"));
     }
 
-    private BigDecimal reasonableMax(SimulationTagProfile profile) {
-        BigDecimal warnLimit = profile.warnLimit() == null ? DEFAULT_BASE_VALUE : profile.warnLimit();
-        String tagCode = normalizedTagCode(profile);
-        if (tagCode.contains("WINDING_TEMP")) {
-            return warnLimit.min(new BigDecimal("120.0000"));
+    private boolean inReasonableRange(SimulationPointProfile profile, BigDecimal value) {
+        if (profile.minLimit() != null && value.compareTo(profile.minLimit()) < 0) {
+            return false;
         }
-        if (tagCode.contains("OIL_TEMP")) {
-            return warnLimit.min(new BigDecimal("105.0000"));
-        }
-        if (tagCode.contains("AMBIENT_TEMP")) {
-            return warnLimit.min(new BigDecimal("60.0000"));
-        }
-        if (tagCode.contains("VOLTAGE")) {
-            return new BigDecimal("11.5000");
-        }
-        return warnLimit;
+        return profile.maxLimit() == null || value.compareTo(profile.maxLimit()) <= 0;
     }
 
-    private String normalizedTagCode(SimulationTagProfile profile) {
-        return profile.tagCode() == null ? "" : profile.tagCode().toUpperCase();
+    private String alarmType(SimulationPointProfile profile, BigDecimal value) {
+        if ("POWER_FACTOR".equals(normalizedType(profile)) && profile.minLimit() != null && value.compareTo(profile.minLimit()) < 0) {
+            return "POWER_FACTOR_LOW";
+        }
+        return "RANGE_LIMIT";
     }
 
-    private void createAlarmAndTask(SimulationTagProfile profile, LocalDateTime sampleTime, BigDecimal startValue, String alarmType) {
+    private String normalizedType(SimulationPointProfile profile) {
+        return profile.measureType() == null ? "" : profile.measureType().toUpperCase();
+    }
+
+    private void createAlarmAndTask(SimulationPointProfile profile, LocalDateTime sampleTime, BigDecimal startValue, String alarmType) {
         Long alarmId = simulationMapper.nextAlarmId();
         simulationMapper.insertAlarm(
                 alarmId,
-                profile.deviceId(),
-                profile.tagId(),
+                profile.transformerId(),
+                profile.circuitId(),
+                profile.pointId(),
                 alarmType,
                 "SERIOUS",
                 sampleTime,
@@ -202,7 +190,7 @@ public class SimulationService {
         );
         alarmCount.incrementAndGet();
 
-        simulationMapper.insertTask(alarmId, "模拟派单");
+        simulationMapper.insertTask(alarmId, "engineer01");
         taskCount.incrementAndGet();
     }
 }

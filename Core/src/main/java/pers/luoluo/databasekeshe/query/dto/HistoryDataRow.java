@@ -5,15 +5,16 @@ import java.time.LocalDateTime;
 
 public record HistoryDataRow(
         Long id,
-        Long deviceId,
-        String deviceName,
-        Long tagId,
-        String tagName,
-        String tagCode,
+        Long transformerId,
+        String transformerName,
+        Long circuitId,
+        String circuitName,
+        Long pointId,
+        String pointName,
+        String pointCode,
         String unit,
         LocalDateTime sampleTime,
         BigDecimal value,
-        Integer freqFlag,
         Integer qualityFlag,
         LocalDateTime createdAt
 ) {

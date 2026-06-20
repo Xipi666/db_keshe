@@ -41,24 +41,27 @@ public class QueryService {
         for (MessageCategory category : categories) {
             responses.addAll(switch (category) {
                 case SAMPLE -> queryMapper.findSampleMessages(
-                        request.deviceId(),
-                        request.tagId(),
+                        request.transformerId(),
+                        request.circuitId(),
+                        request.pointId(),
                         startTime,
                         endTime,
                         normalizedKeyword(request.keyword()),
                         MESSAGE_LIMIT
                 );
                 case ALARM -> queryMapper.findAlarmMessages(
-                        request.deviceId(),
-                        request.tagId(),
+                        request.transformerId(),
+                        request.circuitId(),
+                        request.pointId(),
                         startTime,
                         endTime,
                         normalizedKeyword(request.keyword()),
                         MESSAGE_LIMIT
                 );
                 case TASK -> queryMapper.findTaskMessages(
-                        request.deviceId(),
-                        request.tagId(),
+                        request.transformerId(),
+                        request.circuitId(),
+                        request.pointId(),
                         startTime,
                         endTime,
                         normalizedKeyword(request.keyword()),
@@ -76,19 +79,14 @@ public class QueryService {
     public List<HistoryDataRow> queryHistory(AuthenticatedUser user, HistoryQueryRequest request) {
         accessGuard.requireAny(user, RoleCode.OPERATOR, RoleCode.ENGINEER, RoleCode.MANAGER);
 
-        Integer freqFlag = request.freqFlag();
-        if (freqFlag != null && freqFlag != 0 && freqFlag != 1) {
-            throw new AuthException(HttpStatus.BAD_REQUEST, "采样频率标记不合法");
-        }
-
         LocalDateTime endTime = request.endTime() == null ? LocalDateTime.now() : request.endTime();
         LocalDateTime startTime = request.startTime() == null ? endTime.minusHours(1) : request.startTime();
         validateTimeRange(startTime, endTime);
 
         return queryMapper.findHistory(
-                request.deviceId(),
-                request.tagId(),
-                freqFlag,
+                request.transformerId(),
+                request.circuitId(),
+                request.pointId(),
                 startTime,
                 endTime,
                 HISTORY_LIMIT
@@ -108,7 +106,7 @@ public class QueryService {
         }
 
         if (!allowedCategories.contains(requestedCategory)) {
-            throw new AuthException(HttpStatus.FORBIDDEN, "当前角色无权查询该消息类型");
+            throw new AuthException(HttpStatus.FORBIDDEN, "Current role cannot query this message category.");
         }
 
         return List.of(requestedCategory);
@@ -116,7 +114,7 @@ public class QueryService {
 
     private void validateTimeRange(LocalDateTime startTime, LocalDateTime endTime) {
         if (startTime.isAfter(endTime)) {
-            throw new AuthException(HttpStatus.BAD_REQUEST, "开始时间不能晚于结束时间");
+            throw new AuthException(HttpStatus.BAD_REQUEST, "Start time cannot be after end time.");
         }
     }
 

@@ -11,14 +11,14 @@ import pers.luoluo.databasekeshe.auth.domain.SysUser;
 public interface AuthMapper {
 
     @Select("""
-            SELECT ID, USERNAME, PASSWORD_HASH, DISPLAY_NAME, ROLE_CODE, PERSON_ID, STATUS
+            SELECT ID, USERNAME, PASSWORD_HASH, DISPLAY_NAME, ROLE_CODE, STATUS
             FROM SYS_USER
             WHERE USERNAME = #{username}
             """)
     SysUser findByUsername(@Param("username") String username);
 
     @Select("""
-            SELECT ID, USERNAME, PASSWORD_HASH, DISPLAY_NAME, ROLE_CODE, PERSON_ID, STATUS
+            SELECT ID, USERNAME, PASSWORD_HASH, DISPLAY_NAME, ROLE_CODE, STATUS
             FROM SYS_USER
             WHERE ID = #{id}
             """)
@@ -31,7 +31,6 @@ public interface AuthMapper {
                 PASSWORD_HASH,
                 DISPLAY_NAME,
                 ROLE_CODE,
-                PERSON_ID,
                 STATUS,
                 LAST_LOGIN_AT,
                 CREATED_AT,
@@ -43,7 +42,6 @@ public interface AuthMapper {
                 #{passwordHash},
                 #{displayName},
                 #{roleCode},
-                NULL,
                 0,
                 NULL,
                 SYSTIMESTAMP,

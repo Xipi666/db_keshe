@@ -7,7 +7,6 @@ public class SysUser {
     private String passwordHash;
     private String displayName;
     private String roleCode;
-    private Long personId;
     private Integer status;
 
     public Long getId() {
@@ -48,14 +47,6 @@ public class SysUser {
 
     public void setRoleCode(String roleCode) {
         this.roleCode = roleCode;
-    }
-
-    public Long getPersonId() {
-        return personId;
-    }
-
-    public void setPersonId(Long personId) {
-        this.personId = personId;
     }
 
     public Integer getStatus() {

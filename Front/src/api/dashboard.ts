@@ -1,10 +1,10 @@
 import { apiGet, apiPost } from './http'
 import type { AuthSession } from '../types/auth'
 import type {
-  DeviceOptionResponse,
   HistoryDataRow,
   HistoryQuery,
   MaintenanceTaskResponse,
+  TransformerOptionResponse,
   MessageQuery,
   MessageResponse,
   RuntimeLogLevel,
@@ -14,8 +14,8 @@ import type {
   TaskUpdatePayload,
 } from '../types/dashboard'
 
-export function fetchDevices(session: AuthSession) {
-  return apiGet<DeviceOptionResponse[]>('/api/metadata/devices', session)
+export function fetchTransformers(session: AuthSession) {
+  return apiGet<TransformerOptionResponse[]>('/api/metadata/transformers', session)
 }
 
 export function fetchMessages(session: AuthSession, query: MessageQuery) {

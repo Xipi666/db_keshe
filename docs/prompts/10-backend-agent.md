@@ -1,6 +1,6 @@
 # 后端开发 Agent 提示词
 
-你负责 `Core/` 下的 Spring Boot 后端。目标是实现 PSM-Smart 的资产台账、动态采样、告警、事故追忆和维保工单闭环。
+你负责 `Core/` 下的 Spring Boot 后端。目标是实现 PSM-Smart 的箱式变压器台账、1 秒采样、告警、柜门日志和维保工单闭环。
 
 ## 技术要求
 
@@ -16,170 +16,136 @@
 
 ```text
 pers.luoluo.databasekeshe
+├── auth
 ├── common
-│   ├── ApiResponse.java
-│   ├── GlobalExceptionHandler.java
-│   └── PageResult.java
 ├── config
-│   ├── MyBatisBatchConfig.java
-│   └── SchedulingConfig.java
-├── metadata
-│   ├── controller
-│   ├── domain
-│   ├── dto
-│   ├── mapper
-│   └── service
-├── acquisition
-│   ├── domain
-│   ├── mapper
-│   ├── scheduler
-│   └── service
-├── alarm
-│   ├── controller
-│   ├── domain
-│   ├── mapper
-│   └── service
+├── logging
 ├── maintenance
-│   ├── controller
-│   ├── domain
-│   ├── mapper
-│   └── service
-└── visualization
-    ├── controller
-    ├── dto
-    └── service
+├── metadata
+├── query
+├── security
+└── simulation
 ```
 
-## 必须实现的核心类
+## 核心模型
 
-动态采样建议类：
+后端应围绕以下数据库模型组织 DTO 和查询：
 
-- `SamplingMode`：枚举，包含 `NORMAL`、`BURST`。
-- `SamplingConfig`：采样周期、阈值、Burst 保持时间。
-- `SamplePoint`：设备 ID、测点 ID、采样时间、值、频率标识。
-- `DeviceSamplingState`：保存某设备当前采样模式、上一次值、进入 Burst 的时间、最近稳定时间。
-- `AcquisitionScheduler`：定时模拟采集入口。
-- `AdaptiveSamplingService`：负责判断是否切换采样模式。
-- `SampleBufferService`：维护 `BlockingQueue<SamplePoint>`。
-- `BatchRawDataWriter`：使用 MyBatis batch 写入 Oracle。
+- `BOX_TRANSFORMER`：箱式变压器基础信息。
+- `POWER_CIRCUIT`：进线/出线回路。
+- `MEASURE_POINT`：测点字典、单位、分组和阈值。
+- `TS_RAW_DATA`：固定 1 秒采样数据。
+- `CABINET_DOOR_LOG`：柜门事件日志。
+- `ALARM_LOG`：告警记录。
+- `MAINT_TASK`：维保工单。
+- `SYS_USER`：用户账号。
 
-告警与工单建议类：
+`MEASURE_POINT.MEASURE_TYPE` 固定覆盖：
 
-- `AlarmService`：创建告警、结束告警、查询告警。
-- `MaintenanceTaskService`：严重告警触发时自动生成工单。
-- `ReplayService`：按告警时间查询前后 5 分钟高频数据。
+```text
+VOLTAGE
+CURRENT
+POWER_FACTOR
+ENERGY
+OIL_TEMP
+SWITCH_STATUS
+FUSE_STATUS
+CABINET_TEMP
+CABINET_HUMIDITY
+SMOKE_STATUS
+DOOR_STATUS
+FREQUENCY
+```
 
-## 调度与批处理要求
+## 接口要求
+
+元数据：
+
+```text
+GET /api/metadata/transformers
+```
+
+返回箱变、回路、测点层级。前端依赖该结构生成筛选项。
+
+历史数据：
+
+```text
+GET /api/history?transformerId=&circuitId=&pointId=&startTime=&endTime=
+```
+
+要求：
+
+- 未传时间时默认最近 1 小时。
+- 支持按箱变、回路、测点过滤。
+- 返回字段包括箱变、回路、测点、测点类型、单位、采样时间、数值和质量。
+
+消息查询：
+
+```text
+GET /api/messages?category=&transformerId=&circuitId=&pointId=&startTime=&endTime=&keyword=
+```
+
+要求：
+
+- `category` 支持 `SAMPLE`、`ALARM`、`TASK`。
+- 可按箱变、回路、测点、时间和关键词过滤。
+- 返回结构要便于前端统一展示。
+
+工单：
+
+```text
+GET /api/tasks?status=&transformerId=&circuitId=&pointId=&startTime=&endTime=&keyword=
+PUT /api/tasks/{taskId}
+```
+
+要求：
+
+- 支持待办、处理中、已完成三个状态。
+- 更新完成状态时写入 `FINISHED_AT`。
+- 只有工程师和管理员可更新工单。
 
 模拟采集：
 
-- 使用 `@Scheduled`。
-- Normal 采集可每分钟执行。
-- Burst 采集可每秒执行，内部只处理处于 Burst 的设备。
-- 调度开关必须可配置，例如 `psm.acquisition.enabled=true`。
-
-队列写入：
-
-- 采集线程只负责生成数据并放入 `BlockingQueue`。
-- 批量写入线程按数量或时间窗口 flush。
-- 建议参数：
-  - `batch-size: 200`
-  - `flush-interval-ms: 1000`
-  - `queue-capacity: 10000`
-
-MyBatis batch：
-
-- 可使用独立 `SqlSessionTemplate` 或在写入服务中通过 `SqlSessionFactory.openSession(ExecutorType.BATCH)`。
-- batch flush 后需要提交事务。
-- 失败时记录日志，并避免吞掉异常导致数据静默丢失。
-
-## application.yml 要求
-
-使用 `application.yml` 管理公共配置，并使用 profile 区分环境：
-
-```yaml
-spring:
-  application:
-    name: database-keshe
-  profiles:
-    active: dev-docker
-
-mybatis:
-  mapper-locations: classpath*:mapper/**/*.xml
-  type-aliases-package: pers.luoluo.databasekeshe
-  configuration:
-    map-underscore-to-camel-case: true
-
-psm:
-  acquisition:
-    enabled: true
-    normal-interval-ms: 60000
-    burst-interval-ms: 1000
-    burst-hold-minutes: 5
-    batch-size: 200
-    queue-capacity: 10000
+```text
+POST /api/simulation/start
+POST /api/simulation/stop
+PUT  /api/simulation/anomaly
+GET  /api/simulation/status
 ```
 
-`dev-docker` 使用 Oracle 21c XE PDB Service Name：
+要求：
 
-```yaml
-spring:
-  config:
-    activate:
-      on-profile: dev-docker
-  datasource:
-    driver-class-name: oracle.jdbc.OracleDriver
-    url: jdbc:oracle:thin:@//localhost:1521/XEPDB1
-    username: ${DB_USERNAME:psm_app}
-    password: ${DB_PASSWORD:psm_app_123}
-```
+- 使用 `@Scheduled(fixedDelay = 1000)` 或等效方式固定 1 秒写入。
+- 每次采集读取启用测点。
+- 异常开关只影响采样值、质量标记、告警和工单生成。
+- 状态接口返回 `sampleIntervalSeconds`。
 
-`dev-windows` 可使用本地 service name：
-
-```yaml
-spring:
-  config:
-    activate:
-      on-profile: dev-windows
-  datasource:
-    driver-class-name: oracle.jdbc.OracleDriver
-    url: ${DB_URL:jdbc:oracle:thin:@//localhost:1521/XEPDB1}
-    username: ${DB_USERNAME:psm_app}
-    password: ${DB_PASSWORD:psm_app_123}
-```
-
-## API 输出约定
-
-统一返回：
-
-```json
-{
-  "code": 0,
-  "message": "ok",
-  "data": {},
-  "timestamp": "2026-05-06T21:30:00"
-}
-```
-
-建议接口：
+运行日志：
 
 ```text
-GET    /api/stations
-GET    /api/bays?stationId=
-GET    /api/devices?stationId=&bayId=
-GET    /api/devices/{deviceId}/latest
-GET    /api/devices/{deviceId}/curve?startTime=&endTime=&freqFlag=
-GET    /api/alarms?deviceId=&status=
-GET    /api/alarms/{alarmId}/replay
-GET    /api/tasks?status=
-PUT    /api/tasks/{taskId}/status
-POST   /api/tasks/{taskId}/feedback
+GET /api/runtime-logs?level=INFO
 ```
+
+## 权限要求
+
+- 所有业务接口使用请求头 `X-User-Id`、`X-Role-Code`。
+- `ADMIN` 通过全部权限。
+- `OPERATOR` 可查询采样、历史和告警，不可处理工单。
+- `ENGINEER` 可查询告警和工单，可处理工单。
+- `MANAGER` 可只读查询采样、历史、告警和工单。
+
+## 查询实现建议
+
+- 历史数据查询优先利用 `TS_RAW_DATA (TRANSFORMER_ID, SAMPLE_TIME)`、`(CIRCUIT_ID, SAMPLE_TIME)`、`(POINT_ID, SAMPLE_TIME)` 复合索引。
+- 工单查询从 `MAINT_TASK` 关联 `ALARM_LOG`，再关联箱变、回路和测点信息。
+- 元数据接口从箱变、回路、测点联查后在 Service 层组装层级结构。
+- 告警和工单生成应避免重复创建相同活跃告警。
 
 ## 验收标准
 
-- `mvn test` 或至少 `mvn package` 可通过。
-- 应用能使用 `dev-docker` profile 连接 Oracle 21c XE。
-- 模拟采集能向 `TS_RAW_DATA` 写入 `FREQ_FLAG = 0` 与 `FREQ_FLAG = 1` 两类数据。
+- `mvn -q test` 可通过。
+- 应用能使用本地 profile 连接 Oracle 21c XE。
+- 元数据接口返回箱变、回路、测点层级。
+- 模拟采集能每秒向 `TS_RAW_DATA` 写入启用测点。
 - 严重告警能生成 `ALARM_LOG` 和 `MAINT_TASK`。
-- `/api/alarms/{alarmId}/replay` 能返回告警前后 5 分钟数据。
+- 历史、消息、工单接口支持 `transformerId`、`circuitId`、`pointId` 查询参数。

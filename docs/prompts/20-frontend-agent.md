@@ -1,149 +1,133 @@
 # 前端开发 Agent 提示词
 
-你负责 `Front/` 下的 Vue 3 + TypeScript 前端。目标是把模板工程改造成变电站监测工作台，展示设备状态、趋势曲线、告警和维保工单。
+你负责 `Front/` 下的 Vue 3 + TypeScript 前端。目标是构建箱式变压器监测工作台，而不是营销页或模板页。
 
 ## 技术要求
 
 - 使用 Vue 3。
-- 单文件组件使用 `<script setup lang="ts">`。
-- 使用 Element Plus 构建布局、表格、表单、抽屉、弹窗和状态标签。
-- 使用 ECharts 绘制趋势曲线和高频波形。
-- API 请求封装到 `src/api/`。
-- 类型定义放到 `src/types/`。
-- 不保留 Vite 默认首页、默认计数器和模板说明。
+- 使用 TypeScript。
+- 使用 Vite。
+- 使用 Element Plus。
+- 使用 ECharts 展示趋势。
+- 单文件组件优先使用 `<script setup lang="ts">`。
+- 接口类型放在 `src/types/`，接口函数放在 `src/api/`。
 
-## 推荐目录
+## 页面目标
+
+登录后首屏直接进入监测工作台，核心区域包括：
+
+- 箱变状态总览。
+- 箱变/回路/测点筛选。
+- 历史采样数据表。
+- 采样趋势图。
+- 告警列表。
+- 维保工单列表与处理弹窗。
+- ADMIN 模拟测试面板。
+- ADMIN 运行日志页面或面板。
+
+## 元数据模型
+
+前端通过以下接口加载筛选树：
 
 ```text
-src/
-├── api/
-│   ├── http.ts
-│   ├── metadata.ts
-│   ├── monitoring.ts
-│   ├── alarm.ts
-│   └── maintenance.ts
-├── components/
-│   ├── charts/
-│   │   ├── RealtimeTrendChart.vue
-│   │   └── ReplayWaveChart.vue
-│   ├── DeviceStatusCard.vue
-│   └── AlarmLevelTag.vue
-├── layouts/
-│   └── MainLayout.vue
-├── views/
-│   ├── DashboardView.vue
-│   ├── DeviceMonitorView.vue
-│   ├── AlarmReplayView.vue
-│   └── MaintenanceTaskView.vue
-├── types/
-│   ├── metadata.ts
-│   ├── monitoring.ts
-│   ├── alarm.ts
-│   └── maintenance.ts
-└── utils/
-    └── format.ts
+GET /api/metadata/transformers
 ```
 
-## 页面结构
+层级结构：
 
-首屏应为监测工作台：
-
-- 左侧：站点、间隔、设备导航。
-- 顶部：系统名称、当前连接状态、最后刷新时间、告警数量。
-- 主区上方：设备关键指标卡片，例如电流、油温、绕组温度、负载率。
-- 主区中部：分钟级趋势曲线。
-- 主区下方：告警列表和维保任务列表。
-- 右侧或抽屉：点击告警后展示事故追忆高频波形。
-
-## ECharts 组件要求
-
-趋势图组件需要暴露 `updateData`：
-
-```ts
-export interface TrendPoint {
-  sampleTime: string
-  value: number
-  freqFlag: 0 | 1
-}
-
-export interface RealtimeTrendChartExpose {
-  updateData: (points: TrendPoint[]) => void
-}
+```text
+Transformer
+  -> Circuit
+      -> MeasurePoint
+  -> Transformer/Cabinet MeasurePoint
 ```
 
-组件内部建议：
+筛选项：
 
-- `onMounted` 初始化图表。
-- `onBeforeUnmount` 销毁图表。
-- 监听容器尺寸变化并 resize。
-- 使用 `defineExpose({ updateData })` 暴露方法。
-- 高频数据和分钟级数据用不同颜色或线型区分。
+- 箱变：`transformerId`
+- 回路：`circuitId`
+- 测点：`pointId`
 
-## 交互要求
+不展示采样频率筛选。
 
-告警下钻：
+## 历史数据
 
-- 用户点击曲线上的告警点或告警表格行。
-- 前端调用 `/api/alarms/{alarmId}/replay`。
-- 在抽屉或页面区域展示告警前 5 分钟到后 5 分钟的 1 秒波形。
-- 展示告警类型、开始时间、结束时间、设备名称、处理状态。
+接口：
 
-工单流转：
-
-- 待办、处理中、已完成使用 Element Plus Tag 显示。
-- 支持状态更新。
-- 支持工程师反馈文本。
-- 完成后列表状态立即刷新。
-
-## API 类型示例
-
-```ts
-export interface DeviceLatestValue {
-  deviceId: number
-  deviceName: string
-  sampleTime: string
-  currentValue: number
-  oilTemperature: number
-  windingTemperature: number
-  samplingMode: 'NORMAL' | 'BURST'
-}
-
-export interface AlarmRecord {
-  id: number
-  deviceId: number
-  deviceName: string
-  alarmType: string
-  level: 'WARN' | 'SERIOUS'
-  startTime: string
-  endTime?: string
-  status: 'ACTIVE' | 'CLOSED'
-}
-
-export interface MaintenanceTask {
-  taskId: number
-  alarmId: number
-  deviceName: string
-  status: 0 | 1 | 2
-  assignee?: string
-  feedback?: string
-  createdAt: string
-}
+```text
+GET /api/history?transformerId=&circuitId=&pointId=&startTime=&endTime=
 ```
 
-## 视觉风格
+展示要求：
 
-- 面向电力监控和运维场景，界面应清晰、克制、稳定。
-- 避免营销页、超大 hero、装饰性渐变背景。
-- 颜色建议以浅色工作台为主，使用红、橙、蓝、绿表达状态。
-- 表格、曲线和状态信息优先，装饰图形从简。
-- 组件边距和字号保持紧凑，适合长时间监控。
+- 默认查询最近 1 小时。
+- 按 `sampleTime` 聚合，同一时刻的多测点数据折叠为一行。
+- 行内展示整体质量，点击后展示该时刻全部测点明细。
+- 图表根据当前筛选展示趋势。
+
+## 消息查询
+
+接口：
+
+```text
+GET /api/messages?category=&transformerId=&circuitId=&pointId=&startTime=&endTime=&keyword=
+```
+
+分类：
+
+- `SAMPLE`：采样数据。
+- `ALARM`：告警记录。
+- `TASK`：维保工单。
+
+## 工单管理
+
+接口：
+
+```text
+GET /api/tasks?status=&transformerId=&circuitId=&pointId=&startTime=&endTime=&keyword=
+PUT /api/tasks/{taskId}
+```
+
+交互要求：
+
+- 工单状态显示为待办、处理中、已完成。
+- 工程师和管理员可修改状态和反馈。
+- 完成工单时刷新列表和消息区。
+
+## 模拟测试
+
+接口：
+
+```text
+POST /api/simulation/start
+POST /api/simulation/stop
+PUT  /api/simulation/anomaly
+GET  /api/simulation/status
+```
+
+展示字段：
+
+- 运行状态。
+- 异常开关。
+- 采样间隔秒数。
+- 写入采样数。
+- 生成告警数。
+- 生成工单数。
+- 最近写入时间。
+
+## 视觉与交互要求
+
+- 使用工程监控风格，信息密度适中。
+- 表格、筛选、状态卡片和图表布局要适合反复查看。
+- 不使用装饰性大首屏。
+- 不使用模板示例数据残留。
+- 按钮、筛选、弹窗和表格状态需要具备空状态、加载状态和错误提示。
 
 ## 验收标准
 
 - `npm run build` 可通过。
-- 没有 TypeScript 类型错误。
-- 首屏不再显示 Vite/Vue 模板内容。
-- 能展示设备状态、分钟级曲线、告警列表、工单列表。
-- ECharts 组件具备 `updateData` 暴露接口。
-- 告警点击后能展示事故追忆区域或抽屉。
-
+- 首屏为监测工作台。
+- 筛选项能正确级联箱变、回路、测点。
+- 历史数据、消息查询和工单管理能按筛选条件刷新。
+- 模拟测试状态能轮询刷新。
+- 运行日志仅 ADMIN 可见。

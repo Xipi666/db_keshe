@@ -18,12 +18,14 @@ public interface MaintenanceTaskMapper {
                 SELECT
                     mt.TASK_ID AS taskId,
                     mt.ALARM_ID AS alarmId,
-                    a.DEVICE_ID AS deviceId,
-                    d.NAME AS deviceName,
-                    a.TAG_ID AS tagId,
-                    t.TAG_NAME AS tagName,
-                    t.TAG_CODE AS tagCode,
-                    t.UNIT AS unit,
+                    a.TRANSFORMER_ID AS transformerId,
+                    bt.NAME AS transformerName,
+                    a.CIRCUIT_ID AS circuitId,
+                    pc.NAME AS circuitName,
+                    a.POINT_ID AS pointId,
+                    mp.POINT_NAME AS pointName,
+                    mp.POINT_CODE AS pointCode,
+                    mp.UNIT AS unit,
                     a.ALARM_TYPE AS alarmType,
                     a.ALARM_LEVEL AS alarmLevel,
                     a.START_VAL AS alarmValue,
@@ -36,20 +38,25 @@ public interface MaintenanceTaskMapper {
                     mt.FINISHED_AT AS finishedAt
                 FROM MAINT_TASK mt
                 JOIN ALARM_LOG a ON a.ID = mt.ALARM_ID
-                JOIN DEVICE_BASE d ON d.ID = a.DEVICE_ID
-                LEFT JOIN TAG_BASE t ON t.ID = a.TAG_ID
+                JOIN BOX_TRANSFORMER bt ON bt.ID = a.TRANSFORMER_ID
+                LEFT JOIN POWER_CIRCUIT pc ON pc.ID = a.CIRCUIT_ID
+                LEFT JOIN MEASURE_POINT mp ON mp.ID = a.POINT_ID
                 WHERE mt.CREATED_AT BETWEEN #{startTime} AND #{endTime}
                 <if test="status != null">
                     AND mt.STATUS = #{status}
                 </if>
-                <if test="deviceId != null">
-                    AND a.DEVICE_ID = #{deviceId}
+                <if test="transformerId != null">
+                    AND a.TRANSFORMER_ID = #{transformerId}
+                </if>
+                <if test="circuitId != null">
+                    AND a.CIRCUIT_ID = #{circuitId}
                 </if>
                 <if test="keyword != null and keyword != ''">
                     AND (
-                        LOWER(d.NAME) LIKE '%' || LOWER(#{keyword}) || '%'
-                        OR LOWER(t.TAG_NAME) LIKE '%' || LOWER(#{keyword}) || '%'
-                        OR LOWER(t.TAG_CODE) LIKE '%' || LOWER(#{keyword}) || '%'
+                        LOWER(bt.NAME) LIKE '%' || LOWER(#{keyword}) || '%'
+                        OR LOWER(pc.NAME) LIKE '%' || LOWER(#{keyword}) || '%'
+                        OR LOWER(mp.POINT_NAME) LIKE '%' || LOWER(#{keyword}) || '%'
+                        OR LOWER(mp.POINT_CODE) LIKE '%' || LOWER(#{keyword}) || '%'
                         OR LOWER(a.ALARM_TYPE) LIKE '%' || LOWER(#{keyword}) || '%'
                         OR LOWER(a.ALARM_LEVEL) LIKE '%' || LOWER(#{keyword}) || '%'
                         OR LOWER(mt.ASSIGNEE) LIKE '%' || LOWER(#{keyword}) || '%'
@@ -63,7 +70,8 @@ public interface MaintenanceTaskMapper {
             """)
     List<MaintenanceTaskResponse> findTasks(
             @Param("status") Integer status,
-            @Param("deviceId") Long deviceId,
+            @Param("transformerId") Long transformerId,
+            @Param("circuitId") Long circuitId,
             @Param("startTime") LocalDateTime startTime,
             @Param("endTime") LocalDateTime endTime,
             @Param("keyword") String keyword,
@@ -81,12 +89,14 @@ public interface MaintenanceTaskMapper {
             SELECT
                 mt.TASK_ID AS taskId,
                 mt.ALARM_ID AS alarmId,
-                a.DEVICE_ID AS deviceId,
-                d.NAME AS deviceName,
-                a.TAG_ID AS tagId,
-                t.TAG_NAME AS tagName,
-                t.TAG_CODE AS tagCode,
-                t.UNIT AS unit,
+                a.TRANSFORMER_ID AS transformerId,
+                bt.NAME AS transformerName,
+                a.CIRCUIT_ID AS circuitId,
+                pc.NAME AS circuitName,
+                a.POINT_ID AS pointId,
+                mp.POINT_NAME AS pointName,
+                mp.POINT_CODE AS pointCode,
+                mp.UNIT AS unit,
                 a.ALARM_TYPE AS alarmType,
                 a.ALARM_LEVEL AS alarmLevel,
                 a.START_VAL AS alarmValue,
@@ -99,8 +109,9 @@ public interface MaintenanceTaskMapper {
                 mt.FINISHED_AT AS finishedAt
             FROM MAINT_TASK mt
             JOIN ALARM_LOG a ON a.ID = mt.ALARM_ID
-            JOIN DEVICE_BASE d ON d.ID = a.DEVICE_ID
-            LEFT JOIN TAG_BASE t ON t.ID = a.TAG_ID
+            JOIN BOX_TRANSFORMER bt ON bt.ID = a.TRANSFORMER_ID
+            LEFT JOIN POWER_CIRCUIT pc ON pc.ID = a.CIRCUIT_ID
+            LEFT JOIN MEASURE_POINT mp ON mp.ID = a.POINT_ID
             WHERE mt.TASK_ID = #{taskId}
             """)
     MaintenanceTaskResponse findById(@Param("taskId") Long taskId);

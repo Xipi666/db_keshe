@@ -12,23 +12,33 @@
 
 ## 业务范围
 
-消息查询覆盖三类数据：
+系统当前围绕箱式变压器监测闭环展开：
 
-- `TS_RAW_DATA`：采样监测数据。
+- `BOX_TRANSFORMER`：箱变基础台账。
+- `POWER_CIRCUIT`：进线/出线回路。
+- `MEASURE_POINT`：测点字典、分组、单位和阈值。
+- `TS_RAW_DATA`：1 秒采样监测数据。
+- `CABINET_DOOR_LOG`：柜门打开、关闭、强开、防盗触发等事件。
 - `ALARM_LOG`：告警记录。
 - `MAINT_TASK`：维保工单。
 
-历史数据查询默认按当前系统时间最近 1 小时查询，不再提供“最近已有数据”。前端仍可自定义开始和结束时间。历史数据表在前端按 `sampleTime` 聚合，同一时间点的多测点数据只显示一行，并用明细中最高风险的 `qualityFlag` 作为整体状态；点击行可查看该时间点全部测点明细。
+消息查询覆盖三类数据：
 
-工单管理使用独立页面，不只依赖消息查询中的 `TASK` 类型。工单支持按状态、设备、时间和关键词筛选，工程师或管理员可更新状态与反馈，完成状态会写入 `FINISHED_AT`。
+- `SAMPLE`：采样监测数据。
+- `ALARM`：告警记录。
+- `TASK`：维保工单。
+
+历史数据查询默认按当前系统时间最近 1 小时查询。前端仍可自定义开始和结束时间。历史数据表按 `sampleTime` 聚合，同一时间点的多测点数据只显示一行，并用明细中最高风险的 `qualityFlag` 作为整体状态；点击行可查看该时间点全部测点明细。
+
+工单管理使用独立页面，不只依赖消息查询中的 `TASK` 类型。工单支持按状态、箱变、回路、测点、时间和关键词筛选，工程师或管理员可更新状态与反馈，完成状态会写入 `FINISHED_AT`。
 
 ADMIN 模拟测试包括：
 
 - 启动模拟数据写入。
 - 停止模拟数据写入。
 - 模拟运行期间切换异常数据。
-- 正常模式按 60 秒节流写入分钟级采样。
-- 异常开启时按 1 秒写入越限/高频采样数据，生成告警和严重告警工单。
+- 固定每 1 秒写入启用测点。
+- 异常开启时制造越限或状态异常，生成告警和严重告警工单。
 - 模拟状态接口在前端运行期间轮询刷新“写入采样”“生成告警”“生成工单”“最近写入”。
 - 采样值按测点类型做演示合理范围校验，越界数据标记 `QUALITY_FLAG = 1` 并生成工单。
 
@@ -41,10 +51,10 @@ ADMIN 运行日志包括：
 
 ## 前后端接口
 
-- `GET /api/metadata/devices`
-- `GET /api/messages?category=&deviceId=&tagId=&startTime=&endTime=&keyword=`
-- `GET /api/history?deviceId=&tagId=&startTime=&endTime=&freqFlag=`
-- `GET /api/tasks?status=&deviceId=&startTime=&endTime=&keyword=`
+- `GET /api/metadata/transformers`
+- `GET /api/messages?category=&transformerId=&circuitId=&pointId=&startTime=&endTime=&keyword=`
+- `GET /api/history?transformerId=&circuitId=&pointId=&startTime=&endTime=`
+- `GET /api/tasks?status=&transformerId=&circuitId=&pointId=&startTime=&endTime=&keyword=`
 - `PUT /api/tasks/{taskId}`
 - `POST /api/simulation/start`
 - `POST /api/simulation/stop`
@@ -68,10 +78,22 @@ ADMIN 运行日志包括：
 
 ## 验收命令
 
-本仓库构建验收统一使用根目录的一键脚本，不要绕过它单独跑前端或后端构建：
+本仓库构建验收统一使用根目录的一键脚本：
 
 ```powershell
 .\build\build.bat
 ```
 
-该脚本负责安装前端依赖、构建前端、复制静态资源、打包后端和复制 SQL。
+单独验证后端：
+
+```powershell
+cd Core
+mvn -q test
+```
+
+单独验证前端：
+
+```powershell
+cd Front
+npm run build
+```

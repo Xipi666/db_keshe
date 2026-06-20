@@ -4,7 +4,8 @@ import java.time.LocalDateTime;
 
 public record TaskQueryRequest(
         Integer status,
-        Long deviceId,
+        Long transformerId,
+        Long circuitId,
         LocalDateTime startTime,
         LocalDateTime endTime,
         String keyword

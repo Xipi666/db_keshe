@@ -7,52 +7,55 @@ import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
-import pers.luoluo.databasekeshe.simulation.dto.SimulationTagProfile;
+import pers.luoluo.databasekeshe.simulation.dto.SimulationPointProfile;
 
 @Mapper
 public interface SimulationMapper {
 
     @Select("""
             SELECT
-                d.ID AS deviceId,
-                t.ID AS tagId,
-                t.TAG_CODE AS tagCode,
-                t.WARN_LIMIT AS warnLimit,
-                t.UNIT AS unit
-            FROM TAG_BASE t
-            JOIN DEVICE_BASE d ON d.ID = t.DEVICE_ID
-            ORDER BY d.ID, t.ID
+                TRANSFORMER_ID AS transformerId,
+                CIRCUIT_ID AS circuitId,
+                ID AS pointId,
+                POINT_CODE AS pointCode,
+                MEASURE_TYPE AS measureType,
+                UNIT AS unit,
+                MIN_LIMIT AS minLimit,
+                MAX_LIMIT AS maxLimit
+            FROM MEASURE_POINT
+            WHERE STATUS = 0
+            ORDER BY TRANSFORMER_ID, CIRCUIT_ID NULLS LAST, ID
             """)
-    List<SimulationTagProfile> findTagProfiles();
+    List<SimulationPointProfile> findPointProfiles();
 
     @Insert("""
             INSERT INTO TS_RAW_DATA (
                 ID,
-                DEVICE_ID,
-                TAG_ID,
+                TRANSFORMER_ID,
+                CIRCUIT_ID,
+                POINT_ID,
                 SAMPLE_TIME,
                 VAL,
-                FREQ_FLAG,
                 QUALITY_FLAG,
                 CREATED_AT
             )
             VALUES (
                 SEQ_TS_RAW_DATA.NEXTVAL,
-                #{deviceId},
-                #{tagId},
+                #{transformerId},
+                #{circuitId},
+                #{pointId},
                 #{sampleTime},
                 #{value},
-                #{freqFlag},
                 #{qualityFlag},
                 SYSTIMESTAMP
             )
             """)
     int insertRawData(
-            @Param("deviceId") Long deviceId,
-            @Param("tagId") Long tagId,
+            @Param("transformerId") Long transformerId,
+            @Param("circuitId") Long circuitId,
+            @Param("pointId") Long pointId,
             @Param("sampleTime") LocalDateTime sampleTime,
             @Param("value") BigDecimal value,
-            @Param("freqFlag") int freqFlag,
             @Param("qualityFlag") int qualityFlag
     );
 
@@ -62,8 +65,9 @@ public interface SimulationMapper {
     @Insert("""
             INSERT INTO ALARM_LOG (
                 ID,
-                DEVICE_ID,
-                TAG_ID,
+                TRANSFORMER_ID,
+                CIRCUIT_ID,
+                POINT_ID,
                 ALARM_TYPE,
                 ALARM_LEVEL,
                 START_TIME,
@@ -75,8 +79,9 @@ public interface SimulationMapper {
             )
             VALUES (
                 #{alarmId},
-                #{deviceId},
-                #{tagId},
+                #{transformerId},
+                #{circuitId},
+                #{pointId},
                 #{alarmType},
                 #{alarmLevel},
                 #{startTime},
@@ -89,8 +94,9 @@ public interface SimulationMapper {
             """)
     int insertAlarm(
             @Param("alarmId") Long alarmId,
-            @Param("deviceId") Long deviceId,
-            @Param("tagId") Long tagId,
+            @Param("transformerId") Long transformerId,
+            @Param("circuitId") Long circuitId,
+            @Param("pointId") Long pointId,
             @Param("alarmType") String alarmType,
             @Param("alarmLevel") String alarmLevel,
             @Param("startTime") LocalDateTime startTime,

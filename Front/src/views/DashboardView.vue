@@ -2,12 +2,12 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import * as echarts from 'echarts'
 import {
-  fetchDevices,
   fetchHistory,
   fetchMessages,
   fetchRuntimeLogs,
   fetchSimulationStatus,
   fetchTasks,
+  fetchTransformers,
   setSimulationAnomaly,
   startSimulation,
   stopSimulation,
@@ -17,17 +17,18 @@ import { roleLabels } from '../types/auth'
 import {
   allowedCategories,
   categoryLabels,
-  type DeviceOptionResponse,
+  runtimeLogLevelLabels,
+  runtimeLogLevelOptions,
+  type CircuitOptionResponse,
   type HistoryDataRow,
   type MaintenanceTaskResponse,
+  type MeasurePointOptionResponse,
   type MessageCategory,
   type MessageResponse,
   type RuntimeLogLevel,
   type RuntimeLogResponse,
   type SimulationStatusResponse,
-  type TagOptionResponse,
-  runtimeLogLevelLabels,
-  runtimeLogLevelOptions,
+  type TransformerOptionResponse,
 } from '../types/dashboard'
 import type { AuthSession } from '../types/auth'
 import { appendFrontendLog, clearFrontendLogs, readFrontendLogs } from '../utils/runtimeLog'
@@ -41,22 +42,21 @@ const emit = defineEmits<{
 }>()
 
 type TabName = 'messages' | 'history' | 'tasks' | 'simulation' | 'logs'
-type DeviceStatusFilter = 'all' | 'normal' | 'warning' | 'offline'
+type TransformerStatusFilter = 'all' | 'normal' | 'warning' | 'offline'
 type HistoryGroupStatus = 'normal' | 'suspect' | 'invalid'
 
 interface HistoryTimeGroup {
   sampleTime: string
   rows: HistoryDataRow[]
-  deviceNames: string
-  tagSummary: string
+  transformerNames: string
+  pointSummary: string
   highestQualityFlag: number
   status: HistoryGroupStatus
-  freqFlags: number[]
   valueSummary: string
 }
 
 const activeTab = ref<TabName>('messages')
-const devices = ref<DeviceOptionResponse[]>([])
+const transformers = ref<TransformerOptionResponse[]>([])
 const messages = ref<MessageResponse[]>([])
 const historyRows = ref<HistoryDataRow[]>([])
 const tasks = ref<MaintenanceTaskResponse[]>([])
@@ -70,7 +70,7 @@ const isLoadingMetadata = ref(false)
 const isSimulationBusy = ref(false)
 const isLoadingRuntimeLogs = ref(false)
 const errorMessage = ref('')
-const selectedDeviceStatus = ref<DeviceStatusFilter | null>(null)
+const selectedTransformerStatus = ref<TransformerStatusFilter | null>(null)
 const selectedHistoryGroup = ref<HistoryTimeGroup | null>(null)
 const selectedTask = ref<MaintenanceTaskResponse | null>(null)
 const runtimeLogLevel = ref<RuntimeLogLevel>('INFO')
@@ -80,24 +80,26 @@ let chart: echarts.ECharts | null = null
 
 const messageForm = reactive({
   category: '' as '' | MessageCategory,
-  deviceId: undefined as number | undefined,
-  tagId: undefined as number | undefined,
+  transformerId: undefined as number | undefined,
+  circuitId: undefined as number | undefined,
+  pointId: undefined as number | undefined,
   startTime: '' as string,
   endTime: '' as string,
   keyword: '',
 })
 
 const historyForm = reactive({
-  deviceId: undefined as number | undefined,
-  tagId: undefined as number | undefined,
+  transformerId: undefined as number | undefined,
+  circuitId: undefined as number | undefined,
+  pointId: undefined as number | undefined,
   startTime: '' as string,
   endTime: '' as string,
-  freqFlag: '' as '' | 0 | 1,
 })
 
 const taskForm = reactive({
   status: '' as '' | 0 | 1 | 2,
-  deviceId: undefined as number | undefined,
+  transformerId: undefined as number | undefined,
+  circuitId: undefined as number | undefined,
   startTime: '' as string,
   endTime: '' as string,
   keyword: '',
@@ -111,6 +113,9 @@ const taskEditForm = reactive({
 
 const categoryOptions = computed(() => allowedCategories(props.session.roleCode))
 const isAdmin = computed(() => props.session.roleCode === 'ADMIN')
+const canQueryTasks = computed(() => ['ADMIN', 'ENGINEER', 'MANAGER'].includes(props.session.roleCode))
+const canEditTasks = computed(() => ['ADMIN', 'ENGINEER'].includes(props.session.roleCode))
+
 const activeTabTitle = computed(() => {
   const titles: Record<TabName, string> = {
     messages: '消息查询',
@@ -122,58 +127,58 @@ const activeTabTitle = computed(() => {
   return titles[activeTab.value]
 })
 
-const messageTagOptions = computed(() => tagsForDevice(messageForm.deviceId))
-const historyTagOptions = computed(() => tagsForDevice(historyForm.deviceId))
+const messageCircuitOptions = computed(() => circuitsForTransformer(messageForm.transformerId))
+const historyCircuitOptions = computed(() => circuitsForTransformer(historyForm.transformerId))
+const taskCircuitOptions = computed(() => circuitsForTransformer(taskForm.transformerId))
+const messagePointOptions = computed(() => pointsForScope(messageForm.transformerId, messageForm.circuitId))
+const historyPointOptions = computed(() => pointsForScope(historyForm.transformerId, historyForm.circuitId))
 
-const canQueryTasks = computed(() => ['ADMIN', 'ENGINEER', 'MANAGER'].includes(props.session.roleCode))
-const canEditTasks = computed(() => ['ADMIN', 'ENGINEER'].includes(props.session.roleCode))
-
-const deviceStatusCounts = computed(() => {
-  const normal = devices.value.filter((device) => device.status === 0).length
-  const warning = devices.value.filter((device) => device.status === 1).length
-  const offline = devices.value.filter((device) => device.status === 2).length
-  return { normal, warning, offline, total: devices.value.length }
+const transformerStatusCounts = computed(() => {
+  const normal = transformers.value.filter((transformer) => transformer.status === 0).length
+  const warning = transformers.value.filter((transformer) => transformer.status === 1).length
+  const offline = transformers.value.filter((transformer) => transformer.status === 2).length
+  return { normal, warning, offline, total: transformers.value.length }
 })
 
-const selectedDeviceStatusLabel = computed(() => {
-  if (selectedDeviceStatus.value === 'normal') {
-    return '正常设备'
+const selectedTransformerStatusLabel = computed(() => {
+  if (selectedTransformerStatus.value === 'normal') {
+    return '正常箱变'
   }
 
-  if (selectedDeviceStatus.value === 'warning') {
-    return '告警设备'
+  if (selectedTransformerStatus.value === 'warning') {
+    return '告警箱变'
   }
 
-  if (selectedDeviceStatus.value === 'offline') {
-    return '停运设备'
+  if (selectedTransformerStatus.value === 'offline') {
+    return '停运箱变'
   }
 
-  return '全部设备'
+  return '全部箱变'
 })
 
-const deviceStatusDialogVisible = computed({
-  get: () => selectedDeviceStatus.value !== null,
+const transformerStatusDialogVisible = computed({
+  get: () => selectedTransformerStatus.value !== null,
   set: (visible: boolean) => {
     if (!visible) {
-      selectedDeviceStatus.value = null
+      selectedTransformerStatus.value = null
     }
   },
 })
 
-const filteredStatusDevices = computed(() => {
-  if (selectedDeviceStatus.value === 'normal') {
-    return devices.value.filter((device) => device.status === 0)
+const filteredStatusTransformers = computed(() => {
+  if (selectedTransformerStatus.value === 'normal') {
+    return transformers.value.filter((transformer) => transformer.status === 0)
   }
 
-  if (selectedDeviceStatus.value === 'warning') {
-    return devices.value.filter((device) => device.status === 1)
+  if (selectedTransformerStatus.value === 'warning') {
+    return transformers.value.filter((transformer) => transformer.status === 1)
   }
 
-  if (selectedDeviceStatus.value === 'offline') {
-    return devices.value.filter((device) => device.status === 2)
+  if (selectedTransformerStatus.value === 'offline') {
+    return transformers.value.filter((transformer) => transformer.status === 2)
   }
 
-  return devices.value
+  return transformers.value
 })
 
 const visibleRuntimeLogs = computed(() => {
@@ -187,26 +192,23 @@ const visibleRuntimeLogs = computed(() => {
 const groupedHistoryRows = computed<HistoryTimeGroup[]>(() => {
   const groups = new Map<string, HistoryDataRow[]>()
   historyRows.value.forEach((row) => {
-    const key = row.sampleTime
-    groups.set(key, [...(groups.get(key) ?? []), row])
+    groups.set(row.sampleTime, [...(groups.get(row.sampleTime) ?? []), row])
   })
 
   return [...groups.entries()]
     .map(([sampleTime, rows]) => {
-      const orderedRows = [...rows].sort((left, right) => (left.tagName ?? '').localeCompare(right.tagName ?? ''))
+      const orderedRows = [...rows].sort((left, right) => (left.pointName ?? '').localeCompare(right.pointName ?? ''))
       const highestQualityFlag = Math.max(...orderedRows.map((row) => row.qualityFlag ?? 0))
-      const deviceNames = [...new Set(orderedRows.map((row) => row.deviceName))].join('、')
-      const tagNames = orderedRows.map((row) => row.tagName ?? row.tagCode ?? '未知测点')
-      const freqFlags = [...new Set(orderedRows.map((row) => row.freqFlag))]
+      const transformerNames = [...new Set(orderedRows.map((row) => row.transformerName))].join('、')
+      const pointNames = orderedRows.map((row) => row.pointName ?? row.pointCode ?? '未知测点')
       return {
         sampleTime,
         rows: orderedRows,
-        deviceNames,
-        tagSummary: summarizeText(tagNames, 3),
+        transformerNames,
+        pointSummary: summarizeText(pointNames, 3),
         highestQualityFlag,
         status: historyGroupStatus(highestQualityFlag),
-        freqFlags,
-        valueSummary: summarizeText(orderedRows.map((row) => `${row.tagName ?? row.tagCode}: ${row.value}${row.unit ? ` ${row.unit}` : ''}`), 2),
+        valueSummary: summarizeText(orderedRows.map((row) => `${row.pointName ?? row.pointCode}: ${row.value}${row.unit ? ` ${row.unit}` : ''}`), 2),
       }
     })
     .sort((left, right) => right.sampleTime.localeCompare(left.sampleTime))
@@ -233,6 +235,7 @@ const taskEditDialogVisible = computed({
 onMounted(async () => {
   appendFrontendLog('INFO', '进入工作台', `${props.session.displayName} / ${props.session.roleCode}`)
   frontendLogs.value = readFrontendLogs()
+  resetHistoryRange()
   await loadMetadata()
   await Promise.all([queryMessages(), queryHistory(), queryTasks(), loadSimulationStatus(), loadRuntimeLogs()])
   startSimulationPolling()
@@ -245,16 +248,39 @@ onBeforeUnmount(() => {
 })
 
 watch(
-  () => messageForm.deviceId,
+  () => messageForm.transformerId,
   () => {
-    messageForm.tagId = undefined
+    messageForm.circuitId = undefined
+    messageForm.pointId = undefined
   },
 )
 
 watch(
-  () => historyForm.deviceId,
+  () => messageForm.circuitId,
   () => {
-    historyForm.tagId = undefined
+    messageForm.pointId = undefined
+  },
+)
+
+watch(
+  () => historyForm.transformerId,
+  () => {
+    historyForm.circuitId = undefined
+    historyForm.pointId = undefined
+  },
+)
+
+watch(
+  () => historyForm.circuitId,
+  () => {
+    historyForm.pointId = undefined
+  },
+)
+
+watch(
+  () => taskForm.transformerId,
+  () => {
+    taskForm.circuitId = undefined
   },
 )
 
@@ -262,19 +288,36 @@ watch(historyRows, () => {
   void nextTick(renderChart)
 })
 
-function tagsForDevice(deviceId?: number): TagOptionResponse[] {
-  if (!deviceId) {
-    return devices.value.flatMap((device) => device.tags)
+function circuitsForTransformer(transformerId?: number): CircuitOptionResponse[] {
+  if (!transformerId) {
+    return transformers.value.flatMap((transformer) => transformer.circuits)
   }
 
-  return devices.value.find((device) => device.deviceId === deviceId)?.tags ?? []
+  return transformers.value.find((transformer) => transformer.transformerId === transformerId)?.circuits ?? []
+}
+
+function pointsForScope(transformerId?: number, circuitId?: number): MeasurePointOptionResponse[] {
+  const selectedTransformers = transformerId
+    ? transformers.value.filter((transformer) => transformer.transformerId === transformerId)
+    : transformers.value
+
+  return selectedTransformers.flatMap((transformer) => {
+    if (circuitId) {
+      return transformer.circuits.find((circuit) => circuit.circuitId === circuitId)?.points ?? []
+    }
+
+    return [
+      ...transformer.points,
+      ...transformer.circuits.flatMap((circuit) => circuit.points),
+    ]
+  })
 }
 
 async function loadMetadata() {
   isLoadingMetadata.value = true
   errorMessage.value = ''
   try {
-    devices.value = await fetchDevices(props.session)
+    transformers.value = await fetchTransformers(props.session)
   } catch (error) {
     errorMessage.value = getErrorMessage(error)
   } finally {
@@ -288,8 +331,9 @@ async function queryMessages() {
   try {
     messages.value = await fetchMessages(props.session, {
       category: messageForm.category || undefined,
-      deviceId: messageForm.deviceId,
-      tagId: messageForm.tagId,
+      transformerId: messageForm.transformerId,
+      circuitId: messageForm.circuitId,
+      pointId: messageForm.pointId,
       startTime: toIsoValue(messageForm.startTime),
       endTime: toIsoValue(messageForm.endTime),
       keyword: messageForm.keyword.trim() || undefined,
@@ -306,11 +350,11 @@ async function queryHistory() {
   errorMessage.value = ''
   try {
     historyRows.value = await fetchHistory(props.session, {
-      deviceId: historyForm.deviceId,
-      tagId: historyForm.tagId,
+      transformerId: historyForm.transformerId,
+      circuitId: historyForm.circuitId,
+      pointId: historyForm.pointId,
       startTime: toIsoValue(historyForm.startTime),
       endTime: toIsoValue(historyForm.endTime),
-      freqFlag: historyForm.freqFlag === '' ? undefined : historyForm.freqFlag,
     })
   } catch (error) {
     errorMessage.value = getErrorMessage(error)
@@ -329,7 +373,8 @@ async function queryTasks() {
   try {
     tasks.value = await fetchTasks(props.session, {
       status: taskForm.status === '' ? undefined : taskForm.status,
-      deviceId: taskForm.deviceId,
+      transformerId: taskForm.transformerId,
+      circuitId: taskForm.circuitId,
       startTime: toIsoValue(taskForm.startTime),
       endTime: toIsoValue(taskForm.endTime),
       keyword: taskForm.keyword.trim() || undefined,
@@ -496,8 +541,8 @@ function resetHistoryRange() {
   historyForm.endTime = toLocalInputValue(new Date())
 }
 
-function openDeviceStatusList(status: DeviceStatusFilter) {
-  selectedDeviceStatus.value = status
+function openTransformerStatusList(status: TransformerStatusFilter) {
+  selectedTransformerStatus.value = status
 }
 
 function statusLabel(status: number) {
@@ -634,7 +679,7 @@ function messageStatusLabel(row: MessageResponse) {
   }
 
   if (row.category === 'TASK') {
-    return row.status === 0 ? '待办' : row.status === 1 ? '处理中' : '已完成'
+    return taskStatusLabel(row.status)
   }
 
   return row.qualityFlag === 0 ? '正常' : row.qualityFlag === 1 ? '可疑' : '无效'
@@ -650,25 +695,6 @@ function messageStatusType(row: MessageResponse) {
   }
 
   return row.qualityFlag === 0 ? 'success' : 'warning'
-}
-
-function freqLabel(freqFlag?: number) {
-  if (freqFlag === 1) {
-    return '秒级'
-  }
-
-  if (freqFlag === 0) {
-    return '分钟级'
-  }
-
-  return '-'
-}
-
-function freqSummary(freqFlags: number[]) {
-  return freqFlags
-    .sort()
-    .map((freqFlag) => freqLabel(freqFlag))
-    .join('、')
 }
 
 function summarizeText(values: string[], limit: number) {
@@ -708,7 +734,7 @@ function getErrorMessage(error: unknown) {
 
 function handleMenuSelect(key: string) {
   activeTab.value = key as TabName
-  appendFrontendLog('INFO', `切换到${activeTabTitle.value}`)
+  appendFrontendLog('INFO', `切换到 ${activeTabTitle.value}`)
   frontendLogs.value = readFrontendLogs()
 
   if (activeTab.value === 'logs') {
@@ -727,7 +753,7 @@ function handleMenuSelect(key: string) {
       <div class="brand">
         <span class="brand-mark">PSM</span>
         <div>
-          <strong>变电站监测</strong>
+          <strong>箱变监测</strong>
           <small>Smart Operation Console</small>
         </div>
       </div>
@@ -741,85 +767,83 @@ function handleMenuSelect(key: string) {
       </el-menu>
     </aside>
 
-    <main class="workspace">
+    <main class="content">
       <header class="topbar">
         <div>
           <h1>{{ activeTabTitle }}</h1>
-          <p>{{ props.session.displayName }} · {{ roleLabels[props.session.roleCode] }}</p>
+          <p>{{ roleLabels[props.session.roleCode] }} / {{ props.session.displayName }}</p>
         </div>
-
         <el-button @click="emit('logout')">退出登录</el-button>
       </header>
 
-      <el-alert v-if="errorMessage" class="error-alert" type="error" :title="errorMessage" show-icon />
+      <el-alert v-if="errorMessage" class="error-alert" type="error" :title="errorMessage" show-icon closable @close="errorMessage = ''" />
 
       <section class="overview-grid" v-loading="isLoadingMetadata">
-        <button class="metric metric-button" type="button" @click="openDeviceStatusList('all')">
-          <span>设备总数</span>
-          <strong>{{ deviceStatusCounts.total }}</strong>
+        <button class="metric metric-button" type="button" @click="openTransformerStatusList('all')">
+          <span>箱变总数</span>
+          <strong>{{ transformerStatusCounts.total }}</strong>
         </button>
-        <button class="metric metric-button" type="button" @click="openDeviceStatusList('normal')">
-          <span>正常设备</span>
-          <strong>{{ deviceStatusCounts.normal }}</strong>
+        <button class="metric metric-button" type="button" @click="openTransformerStatusList('normal')">
+          <span>正常箱变</span>
+          <strong>{{ transformerStatusCounts.normal }}</strong>
         </button>
-        <button class="metric metric-button" type="button" @click="openDeviceStatusList('warning')">
-          <span>告警设备</span>
-          <strong :class="{ 'metric-danger': deviceStatusCounts.warning > 0 }">{{ deviceStatusCounts.warning }}</strong>
+        <button class="metric metric-button" type="button" @click="openTransformerStatusList('warning')">
+          <span>告警箱变</span>
+          <strong :class="{ 'metric-danger': transformerStatusCounts.warning > 0 }">{{ transformerStatusCounts.warning }}</strong>
         </button>
-        <button class="metric metric-button" type="button" @click="openDeviceStatusList('offline')">
-          <span>停运设备</span>
-          <strong :class="{ 'metric-warning': deviceStatusCounts.offline > 0 }">{{ deviceStatusCounts.offline }}</strong>
+        <button class="metric metric-button" type="button" @click="openTransformerStatusList('offline')">
+          <span>停运箱变</span>
+          <strong :class="{ 'metric-warning': transformerStatusCounts.offline > 0 }">{{ transformerStatusCounts.offline }}</strong>
         </button>
       </section>
 
       <section v-if="activeTab === 'messages'" class="panel">
         <el-form class="query-form" :model="messageForm" label-position="top">
           <el-form-item label="消息类型">
-            <el-select v-model="messageForm.category" clearable placeholder="全部可查询类型">
+            <el-select v-model="messageForm.category" clearable placeholder="全部类型">
+              <el-option v-for="category in categoryOptions" :key="category" :label="categoryLabels[category]" :value="category" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="箱变">
+            <el-select v-model="messageForm.transformerId" clearable filterable placeholder="全部箱变">
               <el-option
-                v-for="category in categoryOptions"
-                :key="category"
-                :label="categoryLabels[category]"
-                :value="category"
+                v-for="transformer in transformers"
+                :key="transformer.transformerId"
+                :label="`${transformer.transformerCode} / ${transformer.transformerName}`"
+                :value="transformer.transformerId"
               />
             </el-select>
           </el-form-item>
-
-          <el-form-item label="设备">
-            <el-select v-model="messageForm.deviceId" clearable filterable placeholder="全部设备">
+          <el-form-item label="回路">
+            <el-select v-model="messageForm.circuitId" clearable filterable placeholder="全部回路">
               <el-option
-                v-for="device in devices"
-                :key="device.deviceId"
-                :label="`${device.stationName} / ${device.deviceName}`"
-                :value="device.deviceId"
+                v-for="circuit in messageCircuitOptions"
+                :key="circuit.circuitId"
+                :label="`${circuit.circuitName} (${circuit.direction})`"
+                :value="circuit.circuitId"
               />
             </el-select>
           </el-form-item>
-
           <el-form-item label="测点">
-            <el-select v-model="messageForm.tagId" clearable filterable placeholder="全部测点">
+            <el-select v-model="messageForm.pointId" clearable filterable placeholder="全部测点">
               <el-option
-                v-for="tag in messageTagOptions"
-                :key="tag.id"
-                :label="`${tag.tagName} (${tag.tagCode})`"
-                :value="tag.id"
+                v-for="point in messagePointOptions"
+                :key="point.id"
+                :label="`${point.pointName} (${point.pointCode})`"
+                :value="point.id"
               />
             </el-select>
           </el-form-item>
-
           <el-form-item label="开始时间">
             <el-input v-model="messageForm.startTime" type="datetime-local" />
           </el-form-item>
-
           <el-form-item label="结束时间">
             <el-input v-model="messageForm.endTime" type="datetime-local" />
           </el-form-item>
-
           <el-form-item label="关键词">
-            <el-input v-model="messageForm.keyword" clearable placeholder="设备、测点、告警类型" />
+            <el-input v-model="messageForm.keyword" clearable placeholder="箱变/回路/测点/告警" />
           </el-form-item>
-
-          <el-form-item class="form-actions">
+          <el-form-item class="query-actions">
             <el-button type="primary" :loading="isLoadingMessages" @click="queryMessages">查询</el-button>
           </el-form-item>
         </el-form>
@@ -830,70 +854,65 @@ function handleMenuSelect(key: string) {
               <el-tag>{{ categoryLabels[row.category as MessageCategory] }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="eventTime" label="时间" min-width="160">
+          <el-table-column prop="eventTime" label="时间" min-width="170">
             <template #default="{ row }">{{ formatTime(row.eventTime) }}</template>
           </el-table-column>
-          <el-table-column prop="deviceName" label="设备" min-width="150" />
-          <el-table-column prop="tagName" label="测点" min-width="150" />
-          <el-table-column label="数值" width="120">
-            <template #default="{ row }">
-              {{ row.value ?? '-' }}{{ row.unit ? ` ${row.unit}` : '' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="告警/工单" min-width="150">
-            <template #default="{ row }">
-              {{ row.alarmType || row.assignee || '-' }}
-            </template>
+          <el-table-column prop="transformerName" label="箱变" min-width="160" />
+          <el-table-column prop="circuitName" label="回路" min-width="140" />
+          <el-table-column prop="pointName" label="测点" min-width="150" />
+          <el-table-column label="数值" min-width="120">
+            <template #default="{ row }">{{ row.value ?? '-' }}{{ row.unit ? ` ${row.unit}` : '' }}</template>
           </el-table-column>
           <el-table-column label="状态" width="110">
             <template #default="{ row }">
               <el-tag :type="messageStatusType(row)">{{ messageStatusLabel(row) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="feedback" label="反馈" min-width="180" show-overflow-tooltip />
+          <el-table-column label="来源" min-width="140">
+            <template #default="{ row }">{{ row.alarmType || row.assignee || '-' }}</template>
+          </el-table-column>
         </el-table>
       </section>
 
       <section v-else-if="activeTab === 'history'" class="panel">
         <el-form class="query-form history-form" :model="historyForm" label-position="top">
-          <el-form-item label="设备">
-            <el-select v-model="historyForm.deviceId" clearable filterable placeholder="全部设备">
+          <el-form-item label="箱变">
+            <el-select v-model="historyForm.transformerId" clearable filterable placeholder="全部箱变">
               <el-option
-                v-for="device in devices"
-                :key="device.deviceId"
-                :label="`${device.stationName} / ${device.deviceName}`"
-                :value="device.deviceId"
+                v-for="transformer in transformers"
+                :key="transformer.transformerId"
+                :label="`${transformer.transformerCode} / ${transformer.transformerName}`"
+                :value="transformer.transformerId"
               />
             </el-select>
           </el-form-item>
-
+          <el-form-item label="回路">
+            <el-select v-model="historyForm.circuitId" clearable filterable placeholder="全部回路">
+              <el-option
+                v-for="circuit in historyCircuitOptions"
+                :key="circuit.circuitId"
+                :label="`${circuit.circuitName} (${circuit.direction})`"
+                :value="circuit.circuitId"
+              />
+            </el-select>
+          </el-form-item>
           <el-form-item label="测点">
-            <el-select v-model="historyForm.tagId" clearable filterable placeholder="全部测点">
+            <el-select v-model="historyForm.pointId" clearable filterable placeholder="全部测点">
               <el-option
-                v-for="tag in historyTagOptions"
-                :key="tag.id"
-                :label="`${tag.tagName} (${tag.tagCode})`"
-                :value="tag.id"
+                v-for="point in historyPointOptions"
+                :key="point.id"
+                :label="`${point.pointName} (${point.pointCode})`"
+                :value="point.id"
               />
             </el-select>
           </el-form-item>
-
-          <el-form-item label="采样频率">
-            <el-select v-model="historyForm.freqFlag" clearable placeholder="全部">
-              <el-option label="分钟级" :value="0" />
-              <el-option label="秒级" :value="1" />
-            </el-select>
-          </el-form-item>
-
           <el-form-item label="开始时间">
             <el-input v-model="historyForm.startTime" type="datetime-local" />
           </el-form-item>
-
           <el-form-item label="结束时间">
             <el-input v-model="historyForm.endTime" type="datetime-local" />
           </el-form-item>
-
-          <el-form-item class="form-actions">
+          <el-form-item class="query-actions">
             <el-button @click="resetHistoryRange">最近一小时</el-button>
             <el-button type="primary" :loading="isLoadingHistory" @click="queryHistory">查询</el-button>
           </el-form-item>
@@ -901,31 +920,23 @@ function handleMenuSelect(key: string) {
 
         <div ref="chartEl" class="history-chart"></div>
 
-        <el-table :data="groupedHistoryRows" border stripe height="420" v-loading="isLoadingHistory" @row-click="openHistoryGroup">
+        <el-table :data="groupedHistoryRows" border stripe height="340" v-loading="isLoadingHistory" @row-click="openHistoryGroup">
           <el-table-column prop="sampleTime" label="采样时间" min-width="170">
             <template #default="{ row }">{{ formatTime(row.sampleTime) }}</template>
           </el-table-column>
-          <el-table-column prop="deviceNames" label="设备" min-width="160" show-overflow-tooltip />
-          <el-table-column prop="tagSummary" label="测点汇总" min-width="190" show-overflow-tooltip />
-          <el-table-column prop="valueSummary" label="数值摘要" min-width="220" show-overflow-tooltip />
-          <el-table-column label="频率" width="120">
-            <template #default="{ row }">
-              {{ freqSummary(row.freqFlags) }}
-            </template>
-          </el-table-column>
-          <el-table-column label="整体状态" width="110">
+          <el-table-column prop="transformerNames" label="箱变" min-width="160" show-overflow-tooltip />
+          <el-table-column prop="pointSummary" label="测点汇总" min-width="190" show-overflow-tooltip />
+          <el-table-column prop="valueSummary" label="采样值" min-width="220" show-overflow-tooltip />
+          <el-table-column label="质量" width="110">
             <template #default="{ row }">
               <el-tag :type="historyGroupStatusType(row.status)">{{ historyGroupStatusLabel(row.status) }}</el-tag>
             </template>
-          </el-table-column>
-          <el-table-column label="明细数" width="90">
-            <template #default="{ row }">{{ row.rows.length }}</template>
           </el-table-column>
         </el-table>
       </section>
 
       <section v-else-if="activeTab === 'tasks'" class="panel">
-        <el-form class="query-form task-form" :model="taskForm" label-position="top">
+        <el-form class="query-form" :model="taskForm" label-position="top">
           <el-form-item label="工单状态">
             <el-select v-model="taskForm.status" clearable placeholder="全部状态">
               <el-option label="待办" :value="0" />
@@ -933,31 +944,36 @@ function handleMenuSelect(key: string) {
               <el-option label="已完成" :value="2" />
             </el-select>
           </el-form-item>
-
-          <el-form-item label="设备">
-            <el-select v-model="taskForm.deviceId" clearable filterable placeholder="全部设备">
+          <el-form-item label="箱变">
+            <el-select v-model="taskForm.transformerId" clearable filterable placeholder="全部箱变">
               <el-option
-                v-for="device in devices"
-                :key="device.deviceId"
-                :label="`${device.stationName} / ${device.deviceName}`"
-                :value="device.deviceId"
+                v-for="transformer in transformers"
+                :key="transformer.transformerId"
+                :label="`${transformer.transformerCode} / ${transformer.transformerName}`"
+                :value="transformer.transformerId"
               />
             </el-select>
           </el-form-item>
-
+          <el-form-item label="回路">
+            <el-select v-model="taskForm.circuitId" clearable filterable placeholder="全部回路">
+              <el-option
+                v-for="circuit in taskCircuitOptions"
+                :key="circuit.circuitId"
+                :label="`${circuit.circuitName} (${circuit.direction})`"
+                :value="circuit.circuitId"
+              />
+            </el-select>
+          </el-form-item>
           <el-form-item label="开始时间">
             <el-input v-model="taskForm.startTime" type="datetime-local" />
           </el-form-item>
-
           <el-form-item label="结束时间">
             <el-input v-model="taskForm.endTime" type="datetime-local" />
           </el-form-item>
-
           <el-form-item label="关键词">
-            <el-input v-model="taskForm.keyword" clearable placeholder="设备、测点、处理人、反馈" />
+            <el-input v-model="taskForm.keyword" clearable placeholder="告警/负责人/反馈" />
           </el-form-item>
-
-          <el-form-item class="form-actions">
+          <el-form-item class="query-actions">
             <el-button type="primary" :loading="isLoadingTasks" @click="queryTasks">查询</el-button>
           </el-form-item>
         </el-form>
@@ -969,20 +985,20 @@ function handleMenuSelect(key: string) {
               <el-tag :type="taskStatusType(row.status)">{{ taskStatusLabel(row.status) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="createdAt" label="创建时间" min-width="170">
-            <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
-          </el-table-column>
-          <el-table-column prop="deviceName" label="设备" min-width="150" />
-          <el-table-column prop="tagName" label="测点" min-width="140" />
-          <el-table-column label="告警值" width="120">
+          <el-table-column prop="transformerName" label="箱变" min-width="150" />
+          <el-table-column prop="circuitName" label="回路" min-width="130" />
+          <el-table-column prop="pointName" label="测点" min-width="140" />
+          <el-table-column label="告警值" min-width="120">
             <template #default="{ row }">{{ row.alarmValue ?? '-' }}{{ row.unit ? ` ${row.unit}` : '' }}</template>
           </el-table-column>
-          <el-table-column prop="alarmType" label="告警类型" min-width="130" />
-          <el-table-column prop="assignee" label="处理人" min-width="120" />
-          <el-table-column prop="feedback" label="反馈" min-width="180" show-overflow-tooltip />
-          <el-table-column label="操作" width="110" fixed="right">
+          <el-table-column prop="alarmType" label="告警类型" min-width="140" />
+          <el-table-column prop="alarmTime" label="告警时间" min-width="170">
+            <template #default="{ row }">{{ formatTime(row.alarmTime) }}</template>
+          </el-table-column>
+          <el-table-column prop="assignee" label="负责人" min-width="120" />
+          <el-table-column v-if="canEditTasks" label="操作" width="110" fixed="right">
             <template #default="{ row }">
-              <el-button size="small" :disabled="!canEditTasks" @click="openTaskEditor(row)">处理</el-button>
+              <el-button size="small" @click="openTaskEditor(row)">处理</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -991,8 +1007,8 @@ function handleMenuSelect(key: string) {
       <section v-else-if="activeTab === 'simulation'" class="panel simulation-panel">
         <div class="simulation-header">
           <div>
-            <h2>模拟数据写入</h2>
-            <p>仅系统管理员可用。正常模式每 {{ simulation?.normalIntervalSeconds ?? 60 }} 秒写入一次，异常开关打开后每 {{ simulation?.burstIntervalSeconds ?? 1 }} 秒写入高频采样并按合理范围生成告警和工单。</p>
+            <h2>秒级模拟采集</h2>
+            <p>固定每 {{ simulation?.sampleIntervalSeconds ?? 1 }} 秒写入一次采样。异常开关打开后，模拟值越限并生成告警和工单。</p>
           </div>
           <el-tag :type="simulation?.running ? 'success' : 'info'">
             {{ simulation?.running ? '运行中' : '已停止' }}
@@ -1001,14 +1017,15 @@ function handleMenuSelect(key: string) {
 
         <div class="simulation-actions">
           <el-button type="primary" :disabled="simulation?.running" :loading="isSimulationBusy" @click="handleStartSimulation">
-            开始模拟数据
+            启动模拟
           </el-button>
           <el-button type="danger" :disabled="!simulation?.running" :loading="isSimulationBusy" @click="handleStopSimulation">
-            停止
+            停止模拟
           </el-button>
           <el-switch
             :model-value="simulation?.anomalyEnabled ?? false"
-            active-text="模拟异常数据"
+            active-text="异常"
+            inactive-text="正常"
             :disabled="!simulation?.running || isSimulationBusy"
             @change="handleAnomalyChange"
           />
@@ -1020,11 +1037,11 @@ function handleMenuSelect(key: string) {
             <strong>{{ simulation?.writeCount ?? 0 }}</strong>
           </div>
           <div class="metric">
-            <span>生成告警</span>
+            <span>告警数</span>
             <strong>{{ simulation?.alarmCount ?? 0 }}</strong>
           </div>
           <div class="metric">
-            <span>生成工单</span>
+            <span>工单数</span>
             <strong>{{ simulation?.taskCount ?? 0 }}</strong>
           </div>
           <div class="metric">
@@ -1034,32 +1051,28 @@ function handleMenuSelect(key: string) {
         </div>
       </section>
 
-      <section v-else class="panel">
-        <div class="log-toolbar">
-          <el-form-item label="日志级别">
-            <el-select v-model="runtimeLogLevel" @change="loadRuntimeLogs">
-              <el-option
-                v-for="level in runtimeLogLevelOptions"
-                :key="level"
-                :label="runtimeLogLevelLabels[level]"
-                :value="level"
-              />
-            </el-select>
-          </el-form-item>
-          <div class="log-actions">
-            <el-button :loading="isLoadingRuntimeLogs" @click="loadRuntimeLogs">刷新日志</el-button>
-            <el-button @click="clearFrontendRuntimeLogs">清空前端日志</el-button>
-          </div>
+      <section v-else-if="activeTab === 'logs'" class="panel logs-panel">
+        <div class="logs-toolbar">
+          <el-select v-model="runtimeLogLevel" class="log-level-select" @change="loadRuntimeLogs">
+            <el-option
+              v-for="level in runtimeLogLevelOptions"
+              :key="level"
+              :label="runtimeLogLevelLabels[level]"
+              :value="level"
+            />
+          </el-select>
+          <el-button :loading="isLoadingRuntimeLogs" @click="loadRuntimeLogs">刷新</el-button>
+          <el-button @click="clearFrontendRuntimeLogs">清空前端日志</el-button>
         </div>
 
         <el-table :data="visibleRuntimeLogs" border stripe height="560" v-loading="isLoadingRuntimeLogs">
           <el-table-column prop="createdAt" label="时间" min-width="170">
             <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
           </el-table-column>
-          <el-table-column label="来源" width="110">
+          <el-table-column label="来源" width="120">
             <template #default="{ row }">
               <el-tag :type="row.source === 'BACKEND' ? 'primary' : 'success'">
-                {{ row.source === 'BACKEND' ? '后端' : '前端' }}
+                {{ row.source }}
               </el-tag>
             </template>
           </el-table-column>
@@ -1074,35 +1087,32 @@ function handleMenuSelect(key: string) {
       </section>
     </main>
 
-    <el-dialog v-model="deviceStatusDialogVisible" :title="selectedDeviceStatusLabel" width="760px">
-      <el-table :data="filteredStatusDevices" border stripe max-height="480">
-        <el-table-column prop="stationName" label="变电站" min-width="150" />
-        <el-table-column prop="bayName" label="间隔" min-width="130" />
-        <el-table-column prop="deviceName" label="设备" min-width="150" />
-        <el-table-column prop="deviceType" label="类型" width="120" />
-        <el-table-column label="状态" width="100">
+    <el-dialog v-model="transformerStatusDialogVisible" :title="selectedTransformerStatusLabel" width="820px">
+      <el-table :data="filteredStatusTransformers" border stripe max-height="480">
+        <el-table-column prop="transformerCode" label="编码" min-width="130" />
+        <el-table-column prop="transformerName" label="箱变" min-width="160" />
+        <el-table-column prop="ratedCapacityKva" label="额定容量(kVA)" min-width="130" />
+        <el-table-column prop="ratedVoltageRatio" label="电压比" min-width="110" />
+        <el-table-column prop="location" label="位置" min-width="180" />
+        <el-table-column label="状态" width="110">
           <template #default="{ row }">
             <el-tag :type="statusTagType(row.status)">{{ statusLabel(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="测点数" width="90">
-          <template #default="{ row }">{{ row.tags.length }}</template>
+        <el-table-column label="测点数" width="100">
+          <template #default="{ row }">{{ row.points.length + row.circuits.reduce((total: number, circuit: CircuitOptionResponse) => total + circuit.points.length, 0) }}</template>
         </el-table-column>
       </el-table>
     </el-dialog>
 
-    <el-dialog v-model="historyDetailDialogVisible" :title="`采样明细 ${formatTime(selectedHistoryGroup?.sampleTime)}`" width="860px">
-      <el-table :data="selectedHistoryGroup?.rows ?? []" border stripe max-height="480">
-        <el-table-column prop="deviceName" label="设备" min-width="150" />
-        <el-table-column prop="tagName" label="测点" min-width="150" />
-        <el-table-column prop="tagCode" label="编码" min-width="160" />
-        <el-table-column label="数值" width="130">
+    <el-dialog v-model="historyDetailDialogVisible" :title="`采样明细 ${formatTime(selectedHistoryGroup?.sampleTime)}`" width="900px">
+      <el-table :data="selectedHistoryGroup?.rows ?? []" border stripe max-height="460">
+        <el-table-column prop="transformerName" label="箱变" min-width="150" />
+        <el-table-column prop="circuitName" label="回路" min-width="130" />
+        <el-table-column prop="pointName" label="测点" min-width="150" />
+        <el-table-column prop="pointCode" label="编码" min-width="170" />
+        <el-table-column label="数值" min-width="120">
           <template #default="{ row }">{{ row.value }}{{ row.unit ? ` ${row.unit}` : '' }}</template>
-        </el-table-column>
-        <el-table-column label="频率" width="100">
-          <template #default="{ row }">
-            <el-tag :type="row.freqFlag === 1 ? 'warning' : 'success'">{{ freqLabel(row.freqFlag) }}</el-tag>
-          </template>
         </el-table-column>
         <el-table-column label="质量" width="100">
           <template #default="{ row }">
@@ -1111,30 +1121,27 @@ function handleMenuSelect(key: string) {
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="createdAt" label="入库时间" min-width="170">
-          <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
-        </el-table-column>
       </el-table>
     </el-dialog>
 
     <el-dialog v-model="taskEditDialogVisible" title="处理工单" width="560px">
       <el-form :model="taskEditForm" label-position="top">
-        <el-form-item label="工单状态">
+        <el-form-item label="状态">
           <el-select v-model="taskEditForm.status">
             <el-option label="待办" :value="0" />
             <el-option label="处理中" :value="1" />
             <el-option label="已完成" :value="2" />
           </el-select>
         </el-form-item>
-        <el-form-item label="处理人">
+        <el-form-item label="负责人">
           <el-input v-model="taskEditForm.assignee" />
         </el-form-item>
-        <el-form-item label="反馈说明">
+        <el-form-item label="处理反馈">
           <el-input v-model="taskEditForm.feedback" type="textarea" :rows="4" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="taskEditDialogVisible = false">取消</el-button>
+        <el-button @click="selectedTask = null">取消</el-button>
         <el-button type="primary" :loading="isLoadingTasks" @click="submitTaskUpdate">保存</el-button>
       </template>
     </el-dialog>
@@ -1145,34 +1152,33 @@ function handleMenuSelect(key: string) {
 .dashboard-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
-  background: #edf2f7;
+  grid-template-columns: 240px 1fr;
+  background: #f5f7fb;
   color: #0f172a;
 }
 
 .sidebar {
-  border-right: 1px solid #d8dee8;
-  background: #101827;
-  color: #e2e8f0;
+  background: #14213d;
+  color: #f8fafc;
+  padding: 24px 18px;
 }
 
 .brand {
   display: flex;
-  gap: 12px;
   align-items: center;
-  padding: 22px 18px;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.16);
+  gap: 12px;
+  margin-bottom: 28px;
 }
 
 .brand-mark {
+  width: 44px;
+  height: 44px;
   display: inline-flex;
-  width: 42px;
-  height: 42px;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
-  background: #2563eb;
-  color: #fff;
+  border-radius: 8px;
+  background: #38bdf8;
+  color: #082f49;
   font-weight: 800;
 }
 
@@ -1182,35 +1188,46 @@ function handleMenuSelect(key: string) {
 }
 
 .brand small {
-  color: #94a3b8;
+  color: #bfd7ea;
   font-size: 12px;
+  margin-top: 2px;
 }
 
 .nav-menu {
-  border-right: none;
+  border-right: 0;
+  background: transparent;
 }
 
-.workspace {
-  min-width: 0;
+.nav-menu :deep(.el-menu-item) {
+  color: #dbeafe;
+  border-radius: 8px;
+}
+
+.nav-menu :deep(.el-menu-item.is-active),
+.nav-menu :deep(.el-menu-item:hover) {
+  background: rgba(56, 189, 248, 0.18);
+  color: #ffffff;
+}
+
+.content {
   padding: 24px;
+  min-width: 0;
 }
 
 .topbar {
   display: flex;
-  align-items: center;
   justify-content: space-between;
+  align-items: center;
   margin-bottom: 18px;
 }
 
 .topbar h1 {
   margin: 0;
-  font-size: 28px;
-  font-weight: 750;
-  letter-spacing: 0;
+  font-size: 24px;
 }
 
 .topbar p {
-  margin-top: 4px;
+  margin: 4px 0 0;
   color: #64748b;
 }
 
@@ -1226,24 +1243,12 @@ function handleMenuSelect(key: string) {
 }
 
 .metric {
-  min-height: 78px;
-  padding: 14px 16px;
-  border: 1px solid #d8dee8;
+  min-height: 88px;
+  padding: 16px;
+  border: 1px solid #d9e2ec;
   border-radius: 8px;
-  background: #fff;
-  box-sizing: border-box;
-}
-
-.metric-button {
-  width: 100%;
+  background: #ffffff;
   text-align: left;
-  cursor: pointer;
-  font: inherit;
-}
-
-.metric-button:hover {
-  border-color: #2563eb;
-  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.10);
 }
 
 .metric span {
@@ -1255,7 +1260,15 @@ function handleMenuSelect(key: string) {
 .metric strong {
   display: block;
   margin-top: 8px;
-  font-size: 24px;
+  font-size: 28px;
+}
+
+.metric-button {
+  cursor: pointer;
+}
+
+.metric-button:hover {
+  border-color: #2563eb;
 }
 
 .metric-danger {
@@ -1267,38 +1280,33 @@ function handleMenuSelect(key: string) {
 }
 
 .metric-time {
-  font-size: 15px !important;
+  font-size: 18px !important;
 }
 
 .panel {
-  padding: 16px;
-  border: 1px solid #d8dee8;
+  background: #ffffff;
+  border: 1px solid #d9e2ec;
   border-radius: 8px;
-  background: #fff;
+  padding: 18px;
 }
 
 .query-form {
   display: grid;
-  grid-template-columns: repeat(6, minmax(140px, 1fr));
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
   gap: 12px;
   align-items: end;
   margin-bottom: 16px;
 }
 
 .history-form {
-  grid-template-columns: repeat(6, minmax(140px, 1fr));
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
 }
 
-.task-form {
-  grid-template-columns: repeat(6, minmax(140px, 1fr));
-}
-
-.form-actions {
+.query-actions {
   align-self: end;
 }
 
 .history-chart {
-  width: 100%;
   height: 260px;
   margin-bottom: 16px;
   border: 1px solid #e2e8f0;
@@ -1307,73 +1315,62 @@ function handleMenuSelect(key: string) {
 
 .simulation-header {
   display: flex;
+  justify-content: space-between;
+  gap: 16px;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
-}
-
-.simulation-header h2 {
-  margin: 0 0 6px;
-  font-size: 20px;
-  letter-spacing: 0;
-}
-
-.simulation-header p {
-  color: #64748b;
-}
-
-.simulation-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 18px;
-}
-
-.simulation-metrics {
-  margin-bottom: 0;
-}
-
-.log-toolbar {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
   margin-bottom: 16px;
 }
 
-.log-toolbar .el-form-item {
-  width: 180px;
-  margin-bottom: 0;
+.simulation-header h2 {
+  margin: 0;
+  font-size: 20px;
 }
 
-.log-actions {
+.simulation-header p {
+  margin: 6px 0 0;
+  color: #64748b;
+}
+
+.simulation-actions,
+.logs-toolbar {
   display: flex;
-  gap: 10px;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
 }
 
-@media (max-width: 980px) {
+.simulation-metrics {
+  margin-top: 16px;
+}
+
+.log-level-select {
+  width: 160px;
+}
+
+@media (max-width: 1100px) {
   .dashboard-shell {
     grid-template-columns: 1fr;
   }
 
   .sidebar {
-    border-right: none;
+    position: static;
   }
 
+  .overview-grid,
   .query-form,
-  .overview-grid {
-    grid-template-columns: 1fr 1fr;
+  .history-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 640px) {
-  .workspace {
-    padding: 16px;
+@media (max-width: 700px) {
+  .content {
+    padding: 14px;
   }
 
+  .overview-grid,
   .query-form,
-  .overview-grid {
+  .history-form {
     grid-template-columns: 1fr;
   }
 
@@ -1381,16 +1378,6 @@ function handleMenuSelect(key: string) {
     align-items: flex-start;
     flex-direction: column;
     gap: 12px;
-  }
-
-  .log-toolbar,
-  .log-actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .log-toolbar .el-form-item {
-    width: 100%;
   }
 }
 </style>
