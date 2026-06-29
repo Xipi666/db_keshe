@@ -14,8 +14,14 @@ public record HistoryDataRow(
         String pointCode,
         String unit,
         LocalDateTime sampleTime,
+        LocalDateTime rangeEndTime,
         BigDecimal value,
+        BigDecimal avgValue,
+        BigDecimal minValue,
+        BigDecimal maxValue,
+        Long sampleCount,
         Integer qualityFlag,
+        String granularity,
         LocalDateTime createdAt
 ) {
 }

@@ -3,8 +3,11 @@ package pers.luoluo.databasekeshe.maintenance.service;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.http.HttpStatus;
+import org.springframework.dao.DataAccessException;
+import org.springframework.jdbc.core.CallableStatementCallback;
+import org.springframework.jdbc.core.CallableStatementCreator;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import pers.luoluo.databasekeshe.auth.exception.AuthException;
 import pers.luoluo.databasekeshe.maintenance.dto.MaintenanceTaskResponse;
 import pers.luoluo.databasekeshe.maintenance.dto.TaskQueryRequest;
@@ -17,14 +20,16 @@ import pers.luoluo.databasekeshe.security.RoleCode;
 @Service
 public class MaintenanceTaskService {
 
-    private static final int TASK_LIMIT = 300;
+    private static final int HISTORY_AWARE_TASK_LIMIT = 1000;
 
     private final MaintenanceTaskMapper maintenanceTaskMapper;
     private final AccessGuard accessGuard;
+    private final JdbcTemplate jdbcTemplate;
 
-    public MaintenanceTaskService(MaintenanceTaskMapper maintenanceTaskMapper, AccessGuard accessGuard) {
+    public MaintenanceTaskService(MaintenanceTaskMapper maintenanceTaskMapper, AccessGuard accessGuard, JdbcTemplate jdbcTemplate) {
         this.maintenanceTaskMapper = maintenanceTaskMapper;
         this.accessGuard = accessGuard;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     public List<MaintenanceTaskResponse> queryTasks(AuthenticatedUser user, TaskQueryRequest request) {
@@ -42,11 +47,10 @@ public class MaintenanceTaskService {
                 startTime,
                 endTime,
                 normalizedKeyword(request.keyword()),
-                TASK_LIMIT
+                HISTORY_AWARE_TASK_LIMIT
         );
     }
 
-    @Transactional
     public MaintenanceTaskResponse updateTask(AuthenticatedUser user, Long taskId, TaskUpdateRequest request) {
         accessGuard.requireAny(user, RoleCode.ENGINEER);
         if (taskId == null || maintenanceTaskMapper.existsById(taskId) == 0) {
@@ -57,7 +61,22 @@ public class MaintenanceTaskService {
         validateStatus(status);
         String assignee = normalizedText(request.assignee(), user.displayName());
         String feedback = normalizedText(request.feedback(), null);
-        maintenanceTaskMapper.updateTask(taskId, status, assignee, feedback);
+        try {
+            jdbcTemplate.execute((CallableStatementCreator) (connection) -> {
+                var statement = connection.prepareCall("{call PKG_PSM_TASK.UPDATE_TASK(?, ?, ?, ?, ?)}");
+                statement.setLong(1, taskId);
+                statement.setInt(2, status);
+                statement.setString(3, assignee);
+                statement.setString(4, feedback);
+                statement.setString(5, user.username());
+                return statement;
+            }, (CallableStatementCallback<Void>) statement -> {
+                statement.execute();
+                return null;
+            });
+        } catch (DataAccessException exception) {
+            throw new AuthException(HttpStatus.BAD_REQUEST, "Failed to update task.");
+        }
 
         MaintenanceTaskResponse updatedTask = maintenanceTaskMapper.findById(taskId);
         if (updatedTask == null) {

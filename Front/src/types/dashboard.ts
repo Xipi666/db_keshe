@@ -84,8 +84,14 @@ export interface HistoryDataRow {
   pointCode?: string
   unit?: string
   sampleTime: string
+  rangeEndTime?: string
   value: number
+  avgValue?: number
+  minValue?: number
+  maxValue?: number
+  sampleCount?: number
   qualityFlag: number
+  granularity?: string
   createdAt: string
 }
 
@@ -143,11 +149,13 @@ export interface SimulationStatusResponse {
   writeCount: number
   alarmCount: number
   taskCount: number
-  sampleIntervalSeconds: number
+  normalIntervalMs: number
+  anomalyIntervalMs: number
+  currentIntervalMs: number
 }
 
 export type RuntimeLogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR'
-export type RuntimeLogSource = 'FRONTEND' | 'BACKEND'
+export type RuntimeLogSource = 'DATABASE'
 
 export interface RuntimeLogResponse {
   id: number

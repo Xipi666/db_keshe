@@ -21,7 +21,8 @@ import pers.luoluo.databasekeshe.security.RoleCode;
 public class QueryService {
 
     private static final int MESSAGE_LIMIT = 300;
-    private static final int HISTORY_LIMIT = 1000;
+    private static final int HISTORY_LIMIT = 50000;
+    private static final int HISTORY_FETCH_LIMIT = HISTORY_LIMIT + 1;
 
     private final QueryMapper queryMapper;
     private final AccessGuard accessGuard;
@@ -77,20 +78,26 @@ public class QueryService {
     }
 
     public List<HistoryDataRow> queryHistory(AuthenticatedUser user, HistoryQueryRequest request) {
-        accessGuard.requireAny(user, RoleCode.OPERATOR, RoleCode.ENGINEER, RoleCode.MANAGER);
+        accessGuard.requireAny(user, RoleCode.ADMIN, RoleCode.OPERATOR, RoleCode.ENGINEER, RoleCode.MANAGER);
 
         LocalDateTime endTime = request.endTime() == null ? LocalDateTime.now() : request.endTime();
         LocalDateTime startTime = request.startTime() == null ? endTime.minusHours(1) : request.startTime();
         validateTimeRange(startTime, endTime);
 
-        return queryMapper.findHistory(
+        List<HistoryDataRow> rows = queryMapper.findHistory(
                 request.transformerId(),
                 request.circuitId(),
                 request.pointId(),
                 startTime,
                 endTime,
-                HISTORY_LIMIT
+                HISTORY_FETCH_LIMIT
         );
+
+        if (rows.size() > HISTORY_LIMIT) {
+            throw new AuthException(HttpStatus.BAD_REQUEST, "History range is too large. Narrow the time window before querying.");
+        }
+
+        return rows;
     }
 
     private List<MessageCategory> resolveCategories(AuthenticatedUser user, MessageCategory requestedCategory) {
