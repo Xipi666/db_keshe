@@ -211,10 +211,11 @@ set "LOCAL_DB_CONNECT=!DB_URL!"
 set "LOCAL_DB_CONNECT=!LOCAL_DB_CONNECT:*@=!"
 set "LOCAL_BOOTSTRAP_SQL=%TEMP%\psm_smart_bootstrap_%RANDOM%.sql"
 set "LOCAL_CHECK_SQL=%TEMP%\psm_smart_check_%RANDOM%.sql"
-set "LOCAL_DB_SCRIPT_DIR=%~dp0db"
+set "LOCAL_DB_SCRIPT_DIR=%~dp0sql"
+if not exist "!LOCAL_DB_SCRIPT_DIR!\oracle21c-init.sql" set "LOCAL_DB_SCRIPT_DIR=%~dp0db"
 if not exist "!LOCAL_DB_SCRIPT_DIR!\oracle21c-init.sql" set "LOCAL_DB_SCRIPT_DIR=%ROOT_DIR%\Core\src\main\resources\db"
 if not exist "!LOCAL_DB_SCRIPT_DIR!\oracle21c-init.sql" (
-    echo [Error] %RED%Database init scripts were not found in release\db or Core\src\main\resources\db.%RESET%
+    echo [Error] %RED%Database init scripts were not found in release\sql, release\db or Core\src\main\resources\db.%RESET%
     exit /b 1
 )
 
@@ -252,7 +253,7 @@ if !errorlevel! neq 0 (
     echo DECLARE
     echo   v_count NUMBER;
     echo BEGIN
-    echo   SELECT COUNT^(^*^) INTO v_count FROM USER_TABLES WHERE TABLE_NAME = 'STATION_BASE';
+    echo   SELECT COUNT^(^*^) INTO v_count FROM USER_TABLES WHERE TABLE_NAME = 'SYS_USER';
     echo   IF v_count = 0 THEN
     echo     RAISE_APPLICATION_ERROR^(-20001, 'SCHEMA_MISSING'^);
     echo   END IF;

@@ -288,6 +288,18 @@ watch(historyRows, () => {
   void nextTick(renderChart)
 })
 
+watch(activeTab, (tab) => {
+  if (tab === 'history') {
+    void nextTick(() => {
+      if (chartEl.value) {
+        chart?.dispose()
+        chart = null
+        renderChart()
+      }
+    })
+  }
+})
+
 function circuitsForTransformer(transformerId?: number): CircuitOptionResponse[] {
   if (!transformerId) {
     return transformers.value.flatMap((transformer) => transformer.circuits)
@@ -505,6 +517,12 @@ function renderChart() {
     return
   }
 
+  /* 如果旧实例绑定的 DOM 已不在文档中（v-if 切换导致），则销毁重建 */
+  if (chart && !document.body.contains(chart.getDom())) {
+    chart.dispose()
+    chart = null
+  }
+
   chart ??= echarts.init(chartEl.value)
   const orderedRows = [...historyRows.value].reverse()
   chart.setOption({
@@ -513,12 +531,15 @@ function renderChart() {
     xAxis: {
       type: 'category',
       data: orderedRows.map((row) => formatTime(row.sampleTime)),
-      axisLabel: { color: '#64748b' },
+      axisLabel: { color: '#64748B' },
+      axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
+      axisTick: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
     },
     yAxis: {
       type: 'value',
-      axisLabel: { color: '#64748b' },
-      splitLine: { lineStyle: { color: '#e2e8f0' } },
+      axisLabel: { color: '#64748B' },
+      splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } },
+      axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
     },
     series: [
       {
@@ -528,9 +549,12 @@ function renderChart() {
         symbol: 'circle',
         symbolSize: 5,
         data: orderedRows.map((row) => row.value),
-        lineStyle: { color: '#2563eb', width: 2 },
-        itemStyle: { color: '#2563eb' },
-        areaStyle: { color: 'rgba(37, 99, 235, 0.10)' },
+        lineStyle: { color: '#60A5FA', width: 2.5, shadowBlur: 8, shadowColor: 'rgba(96,165,250,0.35)' },
+        itemStyle: { color: '#60A5FA' },
+        areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: 'rgba(59,130,246,0.18)' },
+          { offset: 1, color: 'rgba(59,130,246,0.02)' },
+        ])},
       },
     ],
   })
@@ -749,54 +773,94 @@ function handleMenuSelect(key: string) {
 
 <template>
   <div class="dashboard-shell">
+    <!-- ── Sidebar ──────────────────────────────────────────── -->
     <aside class="sidebar">
       <div class="brand">
-        <span class="brand-mark">PSM</span>
-        <div>
-          <strong>箱变监测</strong>
+        <div class="brand-icon">
+          <span class="brand-core">⚡</span>
+        </div>
+        <div class="brand-text">
+          <strong>PSM 箱变监测</strong>
           <small>Smart Operation Console</small>
         </div>
       </div>
 
+      <div class="sidebar-divider"></div>
+
       <el-menu :default-active="activeTab" class="nav-menu" @select="handleMenuSelect">
-        <el-menu-item index="messages">消息查询</el-menu-item>
-        <el-menu-item index="history">历史数据</el-menu-item>
-        <el-menu-item v-if="canQueryTasks" index="tasks">工单管理</el-menu-item>
-        <el-menu-item v-if="isAdmin" index="simulation">模拟测试</el-menu-item>
-        <el-menu-item v-if="isAdmin" index="logs">运行日志</el-menu-item>
+        <el-menu-item index="messages">
+          <span class="nav-icon">📡</span>
+          <span>消息查询</span>
+        </el-menu-item>
+        <el-menu-item index="history">
+          <span class="nav-icon">📈</span>
+          <span>历史数据</span>
+        </el-menu-item>
+        <el-menu-item v-if="canQueryTasks" index="tasks">
+          <span class="nav-icon">📋</span>
+          <span>工单管理</span>
+        </el-menu-item>
+        <el-menu-item v-if="isAdmin" index="simulation">
+          <span class="nav-icon">🧪</span>
+          <span>模拟测试</span>
+        </el-menu-item>
+        <el-menu-item v-if="isAdmin" index="logs">
+          <span class="nav-icon">📜</span>
+          <span>运行日志</span>
+        </el-menu-item>
       </el-menu>
+
+      <div class="sidebar-footer">
+        <span class="status-dot"></span>
+        <span class="status-text">系统运行中</span>
+      </div>
     </aside>
 
+    <!-- ── Content ──────────────────────────────────────────── -->
     <main class="content">
       <header class="topbar">
         <div>
           <h1>{{ activeTabTitle }}</h1>
-          <p>{{ roleLabels[props.session.roleCode] }} / {{ props.session.displayName }}</p>
+          <p>{{ roleLabels[props.session.roleCode] }} · {{ props.session.displayName }}</p>
         </div>
-        <el-button @click="emit('logout')">退出登录</el-button>
+        <el-button class="logout-btn" @click="emit('logout')">退出登录</el-button>
       </header>
 
       <el-alert v-if="errorMessage" class="error-alert" type="error" :title="errorMessage" show-icon closable @close="errorMessage = ''" />
 
+      <!-- ── Overview cards ────────────────────────────────── -->
       <section class="overview-grid" v-loading="isLoadingMetadata">
-        <button class="metric metric-button" type="button" @click="openTransformerStatusList('all')">
-          <span>箱变总数</span>
-          <strong>{{ transformerStatusCounts.total }}</strong>
+        <button class="metric metric-all" type="button" @click="openTransformerStatusList('all')">
+          <span class="metric-icon">📦</span>
+          <div>
+            <span class="metric-label">箱变总数</span>
+            <strong>{{ transformerStatusCounts.total }}</strong>
+          </div>
         </button>
-        <button class="metric metric-button" type="button" @click="openTransformerStatusList('normal')">
-          <span>正常箱变</span>
-          <strong>{{ transformerStatusCounts.normal }}</strong>
+        <button class="metric metric-ok" type="button" @click="openTransformerStatusList('normal')">
+          <span class="metric-icon">✅</span>
+          <div>
+            <span class="metric-label">正常运行</span>
+            <strong>{{ transformerStatusCounts.normal }}</strong>
+          </div>
         </button>
-        <button class="metric metric-button" type="button" @click="openTransformerStatusList('warning')">
-          <span>告警箱变</span>
-          <strong :class="{ 'metric-danger': transformerStatusCounts.warning > 0 }">{{ transformerStatusCounts.warning }}</strong>
+        <button class="metric metric-warn" type="button" @click="openTransformerStatusList('warning')">
+          <span class="metric-icon">⚠️</span>
+          <div>
+            <span class="metric-label">告警</span>
+            <strong :class="{ 'text-danger': transformerStatusCounts.warning > 0 }">{{ transformerStatusCounts.warning }}</strong>
+          </div>
         </button>
-        <button class="metric metric-button" type="button" @click="openTransformerStatusList('offline')">
-          <span>停运箱变</span>
-          <strong :class="{ 'metric-warning': transformerStatusCounts.offline > 0 }">{{ transformerStatusCounts.offline }}</strong>
+        <button class="metric metric-off" type="button" @click="openTransformerStatusList('offline')">
+          <span class="metric-icon">⛔</span>
+          <div>
+            <span class="metric-label">停运</span>
+            <strong :class="{ 'text-warning-color': transformerStatusCounts.offline > 0 }">{{ transformerStatusCounts.offline }}</strong>
+          </div>
         </button>
       </section>
 
+      <!-- ── Messages tab ──────────────────────────────────── -->
       <section v-if="activeTab === 'messages'" class="panel">
         <el-form class="query-form" :model="messageForm" label-position="top">
           <el-form-item label="消息类型">
@@ -874,6 +938,7 @@ function handleMenuSelect(key: string) {
         </el-table>
       </section>
 
+      <!-- ── History tab ───────────────────────────────────── -->
       <section v-else-if="activeTab === 'history'" class="panel">
         <el-form class="query-form history-form" :model="historyForm" label-position="top">
           <el-form-item label="箱变">
@@ -935,6 +1000,7 @@ function handleMenuSelect(key: string) {
         </el-table>
       </section>
 
+      <!-- ── Tasks tab ─────────────────────────────────────── -->
       <section v-else-if="activeTab === 'tasks'" class="panel">
         <el-form class="query-form" :model="taskForm" label-position="top">
           <el-form-item label="工单状态">
@@ -1004,6 +1070,7 @@ function handleMenuSelect(key: string) {
         </el-table>
       </section>
 
+      <!-- ── Simulation tab ────────────────────────────────── -->
       <section v-else-if="activeTab === 'simulation'" class="panel simulation-panel">
         <div class="simulation-header">
           <div>
@@ -1051,6 +1118,7 @@ function handleMenuSelect(key: string) {
         </div>
       </section>
 
+      <!-- ── Logs tab ──────────────────────────────────────── -->
       <section v-else-if="activeTab === 'logs'" class="panel logs-panel">
         <div class="logs-toolbar">
           <el-select v-model="runtimeLogLevel" class="log-level-select" @change="loadRuntimeLogs">
@@ -1087,6 +1155,7 @@ function handleMenuSelect(key: string) {
       </section>
     </main>
 
+    <!-- ── Dialogs ─────────────────────────────────────────── -->
     <el-dialog v-model="transformerStatusDialogVisible" :title="selectedTransformerStatusLabel" width="820px">
       <el-table :data="filteredStatusTransformers" border stripe max-height="480">
         <el-table-column prop="transformerCode" label="编码" min-width="130" />
@@ -1149,145 +1218,320 @@ function handleMenuSelect(key: string) {
 </template>
 
 <style scoped>
+/* ═══════════════════════════════════════════════════════════════
+   DASHBOARD — Dark Theme v2
+   Cool blue-gray palette · glassmorphism · semantic tags
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════
+   SHELL
+   ═══════════════════════════════════════════════════════════════ */
 .dashboard-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 240px 1fr;
-  background: #f5f7fb;
-  color: #0f172a;
+  grid-template-columns: 250px 1fr;
+  background: #0B1120;
+  color: #F1F5F9;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   SIDEBAR
+   ═══════════════════════════════════════════════════════════════ */
 .sidebar {
-  background: #14213d;
-  color: #f8fafc;
-  padding: 24px 18px;
+  background: linear-gradient(180deg, #111d33 0%, #0f192c 100%);
+  color: #F1F5F9;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  position: relative;
+  overflow: hidden;
 }
 
+/* subtle sidebar glow at top */
+.sidebar::before {
+  content: '';
+  position: absolute;
+  top: -60px;
+  left: 50%;
+  translate: -50% 0;
+  width: 200px;
+  height: 120px;
+  background: radial-gradient(ellipse, rgba(59, 130, 246, 0.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+/* ── Brand ───────────────────────────────────────────────── */
 .brand {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 28px;
+  margin-bottom: 20px;
+  padding: 0 4px;
 }
 
-.brand-mark {
+.brand-icon {
+  position: relative;
   width: 44px;
   height: 44px;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
-  background: #38bdf8;
-  color: #082f49;
-  font-weight: 800;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(96, 165, 250, 0.06));
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.1);
 }
 
-.brand strong,
-.brand small {
+.brand-core {
+  font-size: 22px;
+  animation: brandPulse 3s ease-in-out infinite;
+}
+
+@keyframes brandPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+.brand-text strong {
   display: block;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  background: linear-gradient(135deg, #F1F5F9, #94A3B8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
-.brand small {
-  color: #bfd7ea;
-  font-size: 12px;
+.brand-text small {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: #64748B;
   margin-top: 2px;
+  text-transform: uppercase;
 }
 
+/* ── Sidebar divider ─────────────────────────────────────── */
+.sidebar-divider {
+  height: 1px;
+  margin: 0 4px 16px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+}
+
+/* ── Nav menu ────────────────────────────────────────────── */
 .nav-menu {
+  flex: 1;
   border-right: 0;
   background: transparent;
 }
 
 .nav-menu :deep(.el-menu-item) {
-  color: #dbeafe;
+  color: #94A3B8;
   border-radius: 8px;
+  margin-bottom: 2px;
+  transition: background 0.15s ease, color 0.15s ease;
+  font-size: 14px;
 }
 
-.nav-menu :deep(.el-menu-item.is-active),
 .nav-menu :deep(.el-menu-item:hover) {
-  background: rgba(56, 189, 248, 0.18);
-  color: #ffffff;
+  color: #F1F5F9;
+  background: rgba(59, 130, 246, 0.08);
 }
 
+.nav-menu :deep(.el-menu-item.is-active) {
+  color: #60A5FA;
+  background: rgba(59, 130, 246, 0.12);
+  font-weight: 600;
+  text-shadow: 0 0 10px rgba(59, 130, 246, 0.25);
+  border-left: 3px solid #60A5FA;
+}
+
+.nav-icon {
+  margin-right: 8px;
+  font-size: 15px;
+}
+
+/* ── Sidebar footer ──────────────────────────────────────── */
+.sidebar-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 8px 0;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: #64748B;
+}
+
+.sidebar-footer .status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22C55E;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.4);
+  animation: dotPulse 2s ease-in-out infinite;
+}
+
+@keyframes dotPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CONTENT AREA
+   ═══════════════════════════════════════════════════════════════ */
 .content {
-  padding: 24px;
+  padding: 28px 28px 40px;
   min-width: 0;
+  background: radial-gradient(ellipse at 80% 0%, #152238 0%, #0B1120 60%);
 }
 
+/* ── Topbar ──────────────────────────────────────────────── */
 .topbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 18px;
+  margin-bottom: 22px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .topbar h1 {
   margin: 0;
   font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #F1F5F9;
 }
 
 .topbar p {
   margin: 4px 0 0;
-  color: #64748b;
+  font-size: 13px;
+  color: #94A3B8;
+  letter-spacing: 0.5px;
 }
 
+.logout-btn {
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  color: #94A3B8 !important;
+  transition: all 0.15s ease;
+}
+
+.logout-btn:hover {
+  border-color: rgba(59, 130, 246, 0.35) !important;
+  background: rgba(59, 130, 246, 0.08) !important;
+  color: #F1F5F9 !important;
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.1);
+}
+
+/* ── Error alert ─────────────────────────────────────────── */
 .error-alert {
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   OVERVIEW METRIC CARDS
+   ═══════════════════════════════════════════════════════════════ */
 .overview-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: 14px;
+  margin-bottom: 20px;
 }
 
 .metric {
-  min-height: 88px;
-  padding: 16px;
-  border: 1px solid #d9e2ec;
-  border-radius: 8px;
-  background: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 84px;
+  padding: 16px 18px;
+  border-radius: var(--radius-md, 10px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(19, 28, 49, 0.75);
+  backdrop-filter: blur(12px);
   text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
 }
 
-.metric span {
+/* Top highlight bar */
+.metric::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
+  pointer-events: none;
+}
+
+/* subtle left border accent per type */
+.metric::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 16px;
+  bottom: 16px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+}
+
+.metric-all::before  { background: #60A5FA; box-shadow: 0 0 10px rgba(96,165,250,0.35); }
+.metric-ok::before   { background: #22C55E; box-shadow: 0 0 10px rgba(34,197,94,0.35); }
+.metric-warn::before { background: #F59E0B; box-shadow: 0 0 10px rgba(245,158,11,0.35); }
+.metric-off::before  { background: #64748B; box-shadow: 0 0 10px rgba(100,116,139,0.35); }
+
+.metric:hover {
+  transform: translateY(-2px);
+  border-color: rgba(59, 130, 246, 0.25);
+  box-shadow:
+    0 8px 30px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(59, 130, 246, 0.1);
+}
+
+.metric-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+}
+
+.metric-label {
   display: block;
-  color: #64748b;
-  font-size: 13px;
+  color: #94A3B8;
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
 }
 
 .metric strong {
   display: block;
-  margin-top: 8px;
-  font-size: 28px;
-}
-
-.metric-button {
-  cursor: pointer;
-}
-
-.metric-button:hover {
-  border-color: #2563eb;
-}
-
-.metric-danger {
-  color: #dc2626;
-}
-
-.metric-warning {
-  color: #d97706;
+  margin-top: 4px;
+  font-size: 30px;
+  font-weight: 700;
+  color: #F1F5F9;
+  font-variant-numeric: tabular-nums;
 }
 
 .metric-time {
   font-size: 18px !important;
 }
 
+.text-danger { color: #F87171 !important; }
+.text-warning-color { color: #FBBF24 !important; }
+
+/* ═══════════════════════════════════════════════════════════════
+   PANELS
+   ═══════════════════════════════════════════════════════════════ */
 .panel {
-  background: #ffffff;
-  border: 1px solid #d9e2ec;
-  border-radius: 8px;
-  padding: 18px;
+  background: rgba(19, 28, 49, 0.65);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-md, 10px);
+  padding: 20px;
 }
 
 .query-form {
@@ -1295,7 +1539,7 @@ function handleMenuSelect(key: string) {
   grid-template-columns: repeat(4, minmax(180px, 1fr));
   gap: 12px;
   align-items: end;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .history-form {
@@ -1306,29 +1550,39 @@ function handleMenuSelect(key: string) {
   align-self: end;
 }
 
+/* ── History chart ───────────────────────────────────────── */
 .history-chart {
   height: 260px;
-  margin-bottom: 16px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  margin-bottom: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-md, 10px);
+  background: rgba(11, 17, 32, 0.55);
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   SIMULATION PANEL
+   ═══════════════════════════════════════════════════════════════ */
 .simulation-header {
   display: flex;
   justify-content: space-between;
   gap: 16px;
   align-items: flex-start;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .simulation-header h2 {
   margin: 0;
   font-size: 20px;
+  font-weight: 700;
+  color: #F1F5F9;
 }
 
 .simulation-header p {
   margin: 6px 0 0;
-  color: #64748b;
+  font-size: 13px;
+  color: #94A3B8;
 }
 
 .simulation-actions,
@@ -1336,17 +1590,306 @@ function handleMenuSelect(key: string) {
   display: flex;
   gap: 12px;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .simulation-metrics {
-  margin-top: 16px;
+  margin-top: 18px;
 }
 
+.simulation-metrics .metric {
+  cursor: default;
+  pointer-events: none;
+}
+
+.simulation-metrics .metric:hover {
+  transform: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   LOGS PANEL
+   ═══════════════════════════════════════════════════════════════ */
 .log-level-select {
   width: 160px;
 }
 
+.logs-panel {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DEEP — Element Plus dark theme overrides v2
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Form labels ─────────────────────────────────────────── */
+:deep(.el-form-item__label) {
+  color: #94A3B8 !important;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+/* ── Inputs / Selects / Textareas ────────────────────────── */
+:deep(.el-input__wrapper),
+:deep(.el-textarea__inner) {
+  background: rgba(19, 28, 49, 0.6) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: none !important;
+  border-radius: 8px !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+:deep(.el-input__inner),
+:deep(.el-textarea__inner) {
+  color: #F1F5F9 !important;
+}
+
+:deep(.el-input__inner)::placeholder,
+:deep(.el-textarea__inner)::placeholder {
+  color: #64748B !important;
+}
+
+:deep(.el-input__wrapper:hover),
+:deep(.el-textarea__inner:hover) {
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+:deep(.el-input.is-focus .el-input__wrapper),
+:deep(.el-textarea__inner:focus) {
+  border-color: rgba(59, 130, 246, 0.45) !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.08), 0 0 14px rgba(59, 130, 246, 0.06) !important;
+}
+
+/* select dropdown */
+:deep(.el-select-dropdown),
+:deep(.el-popper.is-light) {
+  background: #131C31 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(12px);
+}
+
+:deep(.el-select-dropdown__item) {
+  color: #94A3B8 !important;
+}
+
+:deep(.el-select-dropdown__item.hover),
+:deep(.el-select-dropdown__item:hover) {
+  background: rgba(59, 130, 246, 0.08) !important;
+  color: #F1F5F9 !important;
+}
+
+:deep(.el-select-dropdown__item.selected) {
+  color: #60A5FA !important;
+  font-weight: 600;
+}
+
+/* select tag in multi */
+:deep(.el-select .el-tag) {
+  background: rgba(59, 130, 246, 0.12) !important;
+  border-color: rgba(59, 130, 246, 0.25) !important;
+  color: #94A3B8 !important;
+}
+
+/* ── Buttons ─────────────────────────────────────────────── */
+:deep(.el-button--default) {
+  background: rgba(19, 28, 49, 0.6) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #94A3B8 !important;
+  transition: all 0.15s ease;
+}
+
+:deep(.el-button--default:hover) {
+  border-color: rgba(255, 255, 255, 0.16) !important;
+  color: #F1F5F9 !important;
+  background: rgba(19, 28, 49, 0.8) !important;
+}
+
+:deep(.el-button--primary) {
+  background: linear-gradient(135deg, #2563EB, #3B82F6) !important;
+  border-color: transparent !important;
+}
+
+:deep(.el-button--primary:hover) {
+  background: linear-gradient(135deg, #3B82F6, #60A5FA) !important;
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3) !important;
+}
+
+:deep(.el-button--small) {
+  background: rgba(19, 28, 49, 0.6) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #94A3B8 !important;
+  transition: all 0.15s ease;
+}
+
+:deep(.el-button--small:hover) {
+  border-color: rgba(59, 130, 246, 0.35) !important;
+  color: #F1F5F9 !important;
+  background: rgba(59, 130, 246, 0.08) !important;
+}
+
+/* ── Table ───────────────────────────────────────────────── */
+:deep(.el-table) {
+  --el-table-bg-color: rgba(19, 28, 49, 0.7);
+  --el-table-tr-bg-color: rgba(19, 28, 49, 0.7);
+  --el-table-header-bg-color: transparent;
+  --el-table-border-color: rgba(255, 255, 255, 0.05);
+  --el-table-text-color: #F1F5F9;
+  --el-table-header-text-color: #94A3B8;
+  --el-table-row-hover-bg-color: rgba(59, 130, 246, 0.06);
+  --el-table-current-row-bg-color: rgba(59, 130, 246, 0.08);
+  --el-table-striped-row-bg-color: rgba(19, 28, 49, 0.55);
+  --el-table-row-striped-bg-color: rgba(19, 28, 49, 0.55);
+  --el-fill-color-lighter: rgba(19, 28, 49, 0.55);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 13px;
+}
+
+/* 直接覆盖斑马纹 —— 消除偶数行发白（Element Plus 可能未正确读取 CSS 变量） */
+:deep(.el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell) {
+  background-color: rgba(19, 28, 49, 0.55) !important;
+}
+
+/* Table header: smaller, muted, uppercase feel */
+:deep(.el-table th.el-table__cell) {
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  font-size: 12px;
+  text-transform: uppercase;
+  background: transparent !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Table body rows: taller for breathing room */
+:deep(.el-table__body tr > td.el-table__cell) {
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
+:deep(.el-table .el-table__cell) {
+  border-bottom-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Row hover: brand-colored transparent overlay */
+:deep(.el-table__body tr:hover > td.el-table__cell) {
+  background: rgba(59, 130, 246, 0.06) !important;
+  transition: background 0.15s ease;
+}
+
+/* ── Tags — low-saturation bg + high-saturation text ─────── */
+:deep(.el-tag) {
+  border-radius: 4px;
+  font-weight: 500;
+  font-size: 12px;
+  border-width: 1px;
+}
+
+/* success */
+:deep(.el-tag--success) {
+  background: rgba(34, 197, 94, 0.12) !important;
+  border-color: rgba(34, 197, 94, 0.25) !important;
+  color: #4ADE80 !important;
+}
+
+/* danger */
+:deep(.el-tag--danger) {
+  background: rgba(239, 68, 68, 0.12) !important;
+  border-color: rgba(239, 68, 68, 0.25) !important;
+  color: #F87171 !important;
+}
+
+/* warning */
+:deep(.el-tag--warning) {
+  background: rgba(245, 158, 11, 0.12) !important;
+  border-color: rgba(245, 158, 11, 0.25) !important;
+  color: #FBBF24 !important;
+}
+
+/* info / primary */
+:deep(.el-tag--info) {
+  background: rgba(100, 116, 139, 0.12) !important;
+  border-color: rgba(100, 116, 139, 0.25) !important;
+  color: #94A3B8 !important;
+}
+
+:deep(.el-tag--primary) {
+  background: rgba(59, 130, 246, 0.12) !important;
+  border-color: rgba(59, 130, 246, 0.25) !important;
+  color: #60A5FA !important;
+}
+
+/* Alert status dot pulse for danger tags */
+:deep(.el-tag--danger) {
+  animation: none;
+}
+
+/* ── Dialog ──────────────────────────────────────────────── */
+:deep(.el-dialog) {
+  background: #131C31 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5), 0 0 50px rgba(59, 130, 246, 0.06) !important;
+  backdrop-filter: blur(12px);
+}
+
+:deep(.el-dialog__header) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 16px;
+  margin-bottom: 0;
+}
+
+:deep(.el-dialog__title) {
+  color: #F1F5F9 !important;
+  font-weight: 700;
+  font-size: 17px;
+}
+
+:deep(.el-dialog__close) {
+  color: #64748B !important;
+}
+
+:deep(.el-dialog__close:hover) {
+  color: #60A5FA !important;
+}
+
+:deep(.el-dialog__body) {
+  color: #94A3B8 !important;
+  padding-top: 20px;
+}
+
+/* ── Alert ───────────────────────────────────────────────── */
+:deep(.el-alert--error) {
+  background: rgba(239, 68, 68, 0.1) !important;
+  border: 1px solid rgba(239, 68, 68, 0.2) !important;
+}
+
+:deep(.el-alert__title) {
+  color: #F87171 !important;
+}
+
+/* ── Switch ──────────────────────────────────────────────── */
+:deep(.el-switch__label) {
+  color: #94A3B8 !important;
+}
+
+/* ── Loading mask ────────────────────────────────────────── */
+:deep(.el-loading-mask) {
+  background: rgba(11, 17, 32, 0.55) !important;
+  backdrop-filter: blur(2px);
+}
+
+/* ── Scrollbar override for el components ────────────────── */
+:deep(.el-scrollbar__thumb) {
+  background: rgba(255, 255, 255, 0.12) !important;
+}
+
+:deep(.el-scrollbar__thumb:hover) {
+  background: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   RESPONSIVE
+   ═══════════════════════════════════════════════════════════════ */
 @media (max-width: 1100px) {
   .dashboard-shell {
     grid-template-columns: 1fr;
@@ -1354,7 +1897,32 @@ function handleMenuSelect(key: string) {
 
   .sidebar {
     position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 14px 18px;
+    gap: 12px;
   }
+
+  .brand { margin-bottom: 0; }
+
+  .sidebar-divider { display: none; }
+
+  .nav-menu {
+    flex: unset;
+    display: flex;
+  }
+
+  .nav-menu :deep(.el-menu-item) {
+    padding: 0 14px !important;
+  }
+
+  .nav-menu :deep(.el-menu-item.is-active) {
+    border-left: none;
+    border-bottom: 2px solid #60A5FA;
+  }
+
+  .sidebar-footer { display: none; }
 
   .overview-grid,
   .query-form,
@@ -1365,7 +1933,7 @@ function handleMenuSelect(key: string) {
 
 @media (max-width: 700px) {
   .content {
-    padding: 14px;
+    padding: 16px;
   }
 
   .overview-grid,
@@ -1377,7 +1945,17 @@ function handleMenuSelect(key: string) {
   .topbar {
     align-items: flex-start;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
+  }
+
+  .sidebar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .nav-menu {
+    flex-direction: column;
+    width: 100%;
   }
 }
 </style>

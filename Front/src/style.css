@@ -1,16 +1,68 @@
+/* ═══════════════════════════════════════════════════════════════
+   PSM DESIGN SYSTEM — Dark Theme v2
+   Color palette: cool blue-gray with semantic accents
+   ═══════════════════════════════════════════════════════════════ */
+
 :root {
+  /* ── Background hierarchy ─────────────────────────────────── */
+  --bg-primary: #0B1120;
+  --bg-secondary: #131C31;
+  --bg-tertiary: rgba(19, 28, 49, 0.85);
+  --bg-input: rgba(19, 28, 49, 0.75);
+  --bg-hover: rgba(59, 130, 246, 0.08);
+
+  /* ── Text hierarchy ───────────────────────────────────────── */
+  --text-primary: #F1F5F9;
+  --text-secondary: #94A3B8;
+  --text-tertiary: #64748B;
+  --text-inverse: #0B1120;
+
+  /* ── Brand accent ─────────────────────────────────────────── */
+  --accent: #3B82F6;
+  --accent-light: #60A5FA;
+  --accent-glow: rgba(59, 130, 246, 0.18);
+  --accent-soft: rgba(59, 130, 246, 0.10);
+
+  /* ── Semantic colors ──────────────────────────────────────── */
+  --danger: #EF4444;
+  --danger-bg: rgba(239, 68, 68, 0.15);
+  --danger-text: #F87171;
+  --warning: #F59E0B;
+  --warning-bg: rgba(245, 158, 11, 0.15);
+  --warning-text: #FBBF24;
+  --success: #22C55E;
+  --success-bg: rgba(34, 197, 94, 0.15);
+  --success-text: #4ADE80;
+  --info: #3B82F6;
+  --info-bg: rgba(59, 130, 246, 0.15);
+
+  /* ── Borders ──────────────────────────────────────────────── */
+  --border-subtle: 1px solid rgba(255, 255, 255, 0.06);
+  --border-default: 1px solid rgba(255, 255, 255, 0.10);
+  --border-active: 1px solid rgba(59, 130, 246, 0.35);
+  --border-accent: 1px solid rgba(59, 130, 246, 0.25);
+
+  /* ── Typography ───────────────────────────────────────────── */
   font-family:
-    system-ui,
     -apple-system,
     BlinkMacSystemFont,
-    'Segoe UI',
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
     sans-serif;
-  color: #0f172a;
-  background: #edf2f7;
+  color: var(--text-primary);
+  background: var(--bg-primary);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* ── Spacing / Sizing ─────────────────────────────────────── */
+  --table-row-height: 52px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
 }
 
 * {
@@ -21,6 +73,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background: var(--bg-primary);
 }
 
 button,
@@ -34,19 +87,67 @@ textarea {
   min-height: 100vh;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   GLOBAL SCROLLBAR
+   ═══════════════════════════════════════════════════════════════ */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ELEMENT PLUS — GLOBAL OVERRIDES (non-scoped)
+   ═══════════════════════════════════════════════════════════════ */
 .el-menu {
   background: transparent;
 }
 
 .el-menu-item {
-  color: #cbd5e1;
-}
-
-.el-menu-item.is-active {
-  color: #fff;
-  background: rgba(37, 99, 235, 0.42);
+  color: var(--text-secondary);
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .el-menu-item:hover {
-  background: rgba(148, 163, 184, 0.16);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.el-menu-item.is-active {
+  color: var(--accent-light);
+  background: var(--accent-soft);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PRINT — auto light mode
+   ═══════════════════════════════════════════════════════════════ */
+@media print {
+  :root {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8fafc;
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-tertiary: #94a3b8;
+  }
+
+  body {
+    background: #fff;
+    color: #0f172a;
+  }
+
+  ::-webkit-scrollbar {
+    display: none;
+  }
 }
